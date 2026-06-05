@@ -1,17 +1,22 @@
 # Coliseum
-Colisieum is a simple GUI specifcally to make the use of chess engines much easier for the general user in comparison to ARENA Chess GUI which I used to use myself for a long time. This upgrades that
 
-**About the Application**
+Coliseum is a chess engine GUI built to host, manage, and watch chess engine tournaments. It is designed to be much simpler and easier to use than legacy tools like Arena Chess GUI.
 
-This application is a comprehensive Graphical User Interface designed for hosting, managing, and observing chess engine tournaments. It provides a seamless environment for users to test, analyze, and watch different chess engines compete against each other in automated environments.
+If you want to test engines, run automated tournaments, or analyze games without dealing with clunky layouts and outdated configuration menus, Coliseum is a modern alternative.
 
-**Key Features**
-1. Tournament and Match Setup Configure customized single matches or full scale tournaments between multiple chess engines. You can easily define time controls, match conditions, and specific arbiter settings to ensure fair play.
+## Features
 
-2. Real Time Chess Board and Evaluation Watch the games unfold live on a dedicated chess board. The built in evaluation bar provides real time positional analysis, giving you deep insights into the engines thought processes as they calculate their moves.
+### Engine Tournaments
+Set up and run automated single matches or full round-robin tournaments between multiple UCI chess engines. Configure custom time controls, opening books, and match settings.
 
-3. Engine Configuration Management Easily import, configure, and manage your installed chess engines. You can tweak specific engine parameters, manage paths, and save your custom configurations for future tournaments.
+### Live Games & Analysis
+Watch engine games live on a clean board with a real-time evaluation bar that updates as the engines calculate their moves.
 
-4. Detailed Analysis and Dashboard Track the progress of your tournaments through a comprehensive dashboard. Review ongoing game statistics, overall engine performance, and detailed post game analysis all in one place.
+### UCI Engine Management
+Import any UCI engine, tweak its specific parameters, and save custom configurations. Coliseum tracks engine career stats (W/D/L) and Elo history across all tournament runs.
 
-5. Immersive Audio Feedback Enjoy integrated sound effects for piece movements, captures, and game ending events to create a complete and engaging viewing experience.
+### Tactics Trainer
+Scan your generated tournament PGN files to find tactical checkmates, blunder refutations, or better alternative moves. Play and solve these puzzles directly on the built-in tactics board.
+
+### Audio Feedback
+Simple sound effects for moves, captures, check, and game end.
