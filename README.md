@@ -20,3 +20,9 @@ Scan your generated tournament PGN files to find tactical checkmates, blunder re
 
 ### Audio Feedback
 Simple sound effects for moves, captures, check, and game end.
+
+## Installation
+
+1. Download the release zip file.
+2. Extract the contents to a folder.
+3. Open `coliseum.exe` to run the application.
