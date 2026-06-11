@@ -23,6 +23,8 @@ Simple sound effects for moves, captures, check, and game end.
 
 ## Installation
 
-1. Download the release zip file.
-2. Extract the contents to a folder.
-3. Open `coliseum.exe` to run the application.
+1. Download the setup.exe file.
+2. Run the setup.exe.
+3. Coliseum should automatically open, if not then you'll find the shortcut on your desktop.
+
+You may also find the coliseum folder in your appdata
