@@ -10,7 +10,7 @@
     "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on tcp:5173 && electron .\"",
     "electron:build": "vite build && electron-builder"
   },
-  "author": "Antigravity",
+  "author": "Rinarto Gibson",
   "license": "MIT",
   "dependencies": {
     "chess-opening-book-reader": "^0.1.0",
