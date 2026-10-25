@@ -1,11 +1,15 @@
 const { spawn } = require('child_process');
 const EventEmitter = require('events');
 const path = require('path');
+const { launchFile } = require('./linked-engines');
 
 class UciEngine extends EventEmitter {
-    constructor(enginePath, name) {
+    // launchPath: the file to actually run, when it differs from the engine's path (a pinned
+    // snapshot of a linked engine). The engine keeps its own folder as working directory.
+    constructor(enginePath, name, launchPath) {
         super();
         this.path = enginePath;
+        this.launchPath = launchPath || null;
         this.name = name;
         this.process = null;
         this.ready = false;
@@ -19,7 +23,7 @@ class UciEngine extends EventEmitter {
     start() {
         try {
             const engineDir = path.dirname(this.path);
-            this.process = spawn(this.path, { cwd: engineDir });
+            this.process = spawn(this.launchPath || launchFile(this.path), { cwd: engineDir });
 
             this.process.stdout.on('data', (data) => {
                 this.buffer += data.toString();

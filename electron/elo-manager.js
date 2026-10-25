@@ -29,6 +29,8 @@ class EloManager {
         this.openingIndex = 0;
         this.busy = new Map(); // path -> number of games it is playing right now
         this.current = {}; // slot -> { white, black } of the game being played
+        this.linked = null; // LinkedEngines, set by main
+        this.pins = {}; // linked engine path -> snapshot every game of this run uses
     }
 
     get store() {
@@ -64,6 +66,10 @@ class EloManager {
         this.engines.forEach((e) => (this.session.perEngine[e.path] = { wins: 0, draws: 0, losses: 0 }));
         this.openingIndex = Math.floor(Math.random() * 1000);
         this.seed = (Date.now() & 0x7fffffff) || 1;
+        if (this.linked) {
+            this.linked.release(this.pins);
+            this.pins = this.linked.pin(this.engines.map((e) => e.path));
+        }
         this.active = true;
         this.log(`Started: ${this.engines.length} engines, ${this.config.movetime} ms per move, ${this.config.concurrency} game${this.config.concurrency > 1 ? 's' : ''} at a time.`);
         this.sendStatus();
@@ -84,6 +90,8 @@ class EloManager {
         this.arbiters.clear();
         this.busy.clear();
         this.current = {};
+        if (this.linked) this.linked.release(this.pins);
+        this.pins = {};
         this.log('Stopped. Unfinished games were not counted.');
         this.sendStatus();
     }
@@ -155,6 +163,7 @@ class EloManager {
                 blackTimeControl: mt,
                 startFen: opening.fen,
                 openingMoves: opening.moves && opening.moves.length ? opening.moves : undefined,
+                launchPaths: { w: this.pins[white.path], b: this.pins[black.path] },
                 moveDelay: 20,
                 meta: { event: 'Coliseum Elo Estimation', round: `${this.session.games + 1}`, whiteElo: r[white.path].rating, blackElo: r[black.path].rating },
             });

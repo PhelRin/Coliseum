@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openEnginesFolder: () => ipcRenderer.invoke('open-engines-folder'),
     installEngine: (srcPath) => ipcRenderer.invoke('install-engine', srcPath),
     installBook: (srcPath) => ipcRenderer.invoke('install-book', srcPath),
+    // linked engines: used from where they are, never copied into the engines folder
+    pickEngineFiles: () => ipcRenderer.invoke('pick-engine-files'),
+    linkEngine: (srcPath) => ipcRenderer.invoke('link-engine', srcPath),
+    unlinkEngine: (enginePath) => ipcRenderer.invoke('unlink-engine', enginePath),
+    relinkEngine: (oldPath, newPath) => ipcRenderer.invoke('relink-engine', { oldPath, newPath }),
+    listLinkedEngines: () => ipcRenderer.invoke('list-linked-engines'),
 
     getEngineOptions: (enginePath) => ipcRenderer.invoke('get-engine-options', enginePath),
     saveEngineOptions: (path, options) => ipcRenderer.invoke('save-engine-options', { path, options }),
@@ -65,7 +71,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Generic IPC (Safe subset)
     invoke: (channel, data) => {
-        let validChannels = ['scan-engines', 'scan-books', 'open-engines-folder', 'install-engine', 'install-book', 'get-engine-options', 'save-engine-options', 'analysis-start', 'dialog-open-file', 'dialog-save-file', 'save-file-content', 'get-store', 'set-store', 'has-saved-tournament', 'get-presets', 'save-preset', 'delete-preset', 'get-audio-settings', 'save-audio-settings', 'get-tournament-pgn', 'puzzle-engine-eval', 'get-system-info', 'career-set-anchor', 'get-tournament-state', 'list-tournament-archive', 'read-tournament-archive', 'delete-tournament-archive', 'fetch-online-games'];
+        let validChannels = ['scan-engines', 'scan-books', 'open-engines-folder', 'install-engine', 'install-book', 'get-engine-options', 'save-engine-options', 'analysis-start', 'dialog-open-file', 'dialog-save-file', 'save-file-content', 'get-store', 'set-store', 'has-saved-tournament', 'get-presets', 'save-preset', 'delete-preset', 'get-audio-settings', 'save-audio-settings', 'get-tournament-pgn', 'puzzle-engine-eval', 'get-system-info', 'career-set-anchor', 'get-tournament-state', 'list-tournament-archive', 'read-tournament-archive', 'delete-tournament-archive', 'fetch-online-games', 'pick-engine-files', 'link-engine', 'unlink-engine', 'relink-engine', 'list-linked-engines'];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);
         }

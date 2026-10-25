@@ -117,8 +117,10 @@ class Arbiter extends EventEmitter {
         }
         if (this.matchId !== currentMatchId) return null;
 
-        if (whitePath !== 'manual') this.engineWhite = new UciEngine(whitePath, 'White');
-        if (blackPath !== 'manual') this.engineBlack = new UciEngine(blackPath, 'Black');
+        // tournaments and Elo runs pass the snapshot of each linked engine they pinned at start
+        const launch = this.settings.launchPaths || {};
+        if (whitePath !== 'manual') this.engineWhite = new UciEngine(whitePath, 'White', launch.w);
+        if (blackPath !== 'manual') this.engineBlack = new UciEngine(blackPath, 'Black', launch.b);
         if (this.slot !== null) {
             // tournament games: keep the console quiet, there can be several games at once
             if (this.engineWhite) this.engineWhite.verbose = false;

@@ -147,6 +147,26 @@ class Career {
         this.store.set('gameResults', []);
     }
 
+    /** A linked engine moved to a new file: its record, games and anchor go with it. */
+    renameEngine(oldPath, newPath) {
+        if (!this.store || !oldPath || !newPath || oldPath === newPath) return;
+        const all = this.store.get('engineCareerStats') || {};
+        if (all[oldPath] && !all[newPath]) {
+            all[newPath] = { ...all[oldPath], path: newPath };
+            delete all[oldPath];
+            this.store.set('engineCareerStats', all);
+            const results = (this.store.get('gameResults') || []).map((r) => ({
+                ...r,
+                w: r.w === oldPath ? newPath : r.w,
+                b: r.b === oldPath ? newPath : r.b,
+            }));
+            this.store.set('gameResults', results);
+        }
+        const anchor = this.getAnchor();
+        if (anchor && anchor.path === oldPath) this.store.set('ratingAnchor', { ...anchor, path: newPath });
+        this.recompute();
+    }
+
     /** Forget one engine's games and stats. */
     resetEngine(path) {
         if (!this.store) return;
