@@ -65,7 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Generic IPC (Safe subset)
     invoke: (channel, data) => {
-        let validChannels = ['scan-engines', 'scan-books', 'open-engines-folder', 'install-engine', 'install-book', 'get-engine-options', 'save-engine-options', 'analysis-start', 'dialog-open-file', 'dialog-save-file', 'save-file-content', 'get-store', 'set-store', 'has-saved-tournament', 'get-presets', 'save-preset', 'delete-preset', 'get-audio-settings', 'save-audio-settings', 'get-tournament-pgn', 'puzzle-engine-eval', 'get-system-info', 'career-set-anchor', 'get-tournament-state'];
+        let validChannels = ['scan-engines', 'scan-books', 'open-engines-folder', 'install-engine', 'install-book', 'get-engine-options', 'save-engine-options', 'analysis-start', 'dialog-open-file', 'dialog-save-file', 'save-file-content', 'get-store', 'set-store', 'has-saved-tournament', 'get-presets', 'save-preset', 'delete-preset', 'get-audio-settings', 'save-audio-settings', 'get-tournament-pgn', 'puzzle-engine-eval', 'get-system-info', 'career-set-anchor', 'get-tournament-state', 'list-tournament-archive', 'read-tournament-archive', 'delete-tournament-archive', 'fetch-online-games'];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);
         }

@@ -8,7 +8,8 @@ import { audio } from '../utils/audio';
 import { getRatingTier } from './EngineStatsModal';
 import { useElementSize, formatClock } from './live/useLive';
 
-export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isTournament = false, hideWhitePanel = false, hideBlackPanel = false, isTwitch = false }) {
+// casual: a person playing an engine (Play tab) - no engine arrows, eval bar, panels or logs
+export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isTournament = false, hideWhitePanel = false, hideBlackPanel = false, isTwitch = false, casual = false, onReview = null }) {
     // ... state ...
     const [fen, setFen] = useState(() => new Chess().fen());
     const [game] = useState(new Chess());
@@ -215,7 +216,7 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
     const whiteBest = getBestMove(whiteInfo);
     const blackBest = getBestMove(blackInfo);
 
-    if (whiteBest && game.turn() === 'w') {
+    if (!casual && whiteBest && game.turn() === 'w') {
         arrows.push({
             from: whiteBest.substring(0, 2),
             to: whiteBest.substring(2, 4),
@@ -223,7 +224,7 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
         });
     }
 
-    if (blackBest && game.turn() === 'b') {
+    if (!casual && blackBest && game.turn() === 'b') {
         arrows.push({
             from: blackBest.substring(0, 2),
             to: blackBest.substring(2, 4),
@@ -233,7 +234,7 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
 
     const labelFor = (side) => {
         const path = side === 'w' ? matchParams.whitePath : matchParams.blackPath;
-        if (path === 'manual') return 'Human Player';
+        if (path === 'manual') return casual ? 'You' : 'Human Player';
         if (names[side]) return names[side];
         return path ? path.split(/[\\/]/).pop().replace(/\.exe$/i, '') : 'Unknown';
     };
@@ -241,8 +242,8 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
 
     // wide enough for the two engine panels beside the board?
     const wide = rootSize.width >= 1080;
-    const showWhitePanel = wide && !hideWhitePanel;
-    const showBlackPanel = wide && !hideBlackPanel;
+    const showWhitePanel = wide && !hideWhitePanel && !casual;
+    const showBlackPanel = wide && !hideBlackPanel && !casual;
     const turn = game.turn();
     const topSide = orientation === 'white' ? 'b' : 'w';
     const bottomSide = topSide === 'w' ? 'b' : 'w';
@@ -313,7 +314,7 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
                     {strip(topSide)}
                     <div ref={boardRef} className="flex-1 min-h-0 w-full flex items-center justify-center">
                         <div className="flex items-stretch gap-3" style={{ height: boardPx }}>
-                            <EvalBar score={whiteInfo.score && turn === 'w' ? whiteInfo.score : blackInfo.score ? { ...blackInfo.score, value: String(-(parseInt(blackInfo.score.value, 10) || 0)) } : whiteInfo.score} color="white" />
+                            {!casual && <EvalBar score={whiteInfo.score && turn === 'w' ? whiteInfo.score : blackInfo.score ? { ...blackInfo.score, value: String(-(parseInt(blackInfo.score.value, 10) || 0)) } : whiteInfo.score} color="white" />}
                             <div className="relative" style={{ width: boardPx, height: boardPx }}>
                                 <ChessBoard
                                     fen={fen}
@@ -336,9 +337,16 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
                                             )}
                                             <p className="text-muted-foreground mb-5 text-sm">{matchResult.reason}</p>
                                             {!isTwitch && (
-                                                <button onClick={onBack} className="px-6 py-2.5 bg-primary text-black font-bold rounded-xl hover:brightness-110">
-                                                    Back to setup
-                                                </button>
+                                                <div className="flex gap-2 justify-center">
+                                                    <button onClick={onBack} className="px-6 py-2.5 bg-primary text-black font-bold rounded-xl hover:brightness-110">
+                                                        {casual ? 'New game' : 'Back to setup'}
+                                                    </button>
+                                                    {onReview && pgn && matchResult.winner !== 'error' && (
+                                                        <button onClick={() => onReview(pgn)} className="px-6 py-2.5 bg-white/10 border border-white/10 text-white font-bold rounded-xl hover:bg-white/15">
+                                                            Review game
+                                                        </button>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -347,7 +355,7 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
                         </div>
                     </div>
                     {strip(bottomSide)}
-                    <div
+                    {!casual && <div
                         ref={logsEndRef}
                         className="h-20 overflow-y-auto bg-black/60 border border-white/5 rounded-xl px-3 py-2 font-mono text-[10px] text-primary/70 shrink-0"
                         style={{ width: boardPx + 32, maxWidth: '100%' }}
@@ -355,7 +363,7 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
                         {logs.slice(-20).map((l, i) => (
                             <div key={i} className="whitespace-pre-wrap border-b border-white/5 py-0.5">{`> ${l}`}</div>
                         ))}
-                    </div>
+                    </div>}
                 </div>
 
                 {showBlackPanel && (

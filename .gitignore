@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 release/
 # engines and opening books are third-party files with their own licences; keep them out of the repo

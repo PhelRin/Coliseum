@@ -60,6 +60,32 @@ function moveAccuracy(winBefore, winAfter) {
     return Math.max(0, Math.min(100, raw));
 }
 
+// Rough playing strength for one game, estimated from that side's game accuracy.
+// The curve follows typical accuracies at each rating level (Lichess-style accuracy):
+// beginners around 50-65%, club players 75-85%, masters 90%+, engines 97%+.
+// A single game is a noisy sample, so the margin widens for short games.
+const ELO_CURVE = [
+    [0, 100], [40, 400], [55, 700], [65, 1000], [72, 1300], [78, 1600],
+    [83, 1900], [87, 2200], [90, 2450], [93, 2700], [96, 3000], [98.5, 3300], [100, 3400]
+];
+
+function estimateElo(accuracy, scoredMoves) {
+    if (accuracy === null || accuracy === undefined || !Number.isFinite(accuracy)) return null;
+    if (!scoredMoves || scoredMoves < 8) return null; // too few real decisions to say anything
+    const a = Math.max(0, Math.min(100, accuracy));
+    let elo = ELO_CURVE[ELO_CURVE.length - 1][1];
+    for (let i = 1; i < ELO_CURVE.length; i++) {
+        const [a0, e0] = ELO_CURVE[i - 1];
+        const [a1, e1] = ELO_CURVE[i];
+        if (a <= a1) {
+            elo = e0 + (e1 - e0) * (a - a0) / (a1 - a0);
+            break;
+        }
+    }
+    const margin = Math.max(100, Math.min(400, Math.round(900 / Math.sqrt(scoredMoves) / 50) * 50));
+    return { elo: Math.round(elo / 50) * 50, margin };
+}
+
 function stdDev(arr) {
     if (arr.length === 0) return 0;
     const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -437,6 +463,7 @@ module.exports = {
     negateScore,
     moveAccuracy,
     gameAccuracy,
+    estimateElo,
     uciToMoveInput,
     moveToUci,
     applyUci,

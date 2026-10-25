@@ -76,6 +76,9 @@ class PuzzleGenerator extends EventEmitter {
         const enabledTypes = settings.types || { mate: true, blunder: true, better_move: true };
         const mateRange = settings.mateRange || { m1: true, m2: true, m3: true, mx: true };
         const targetSide = settings.targetSide || 'both';
+        // Puzzles from a player's own games: only positions where that player is to move
+        const playerName = String(settings.playerName || '').trim().toLowerCase();
+        const source = settings.source || null;
         const maxPlies = Math.max(1, parseInt(settings.maxPlies, 10) || 10);
         const startPly = 8;
         const P = PRESETS[settings.sensitivity] || PRESETS.balanced;
@@ -108,13 +111,22 @@ class PuzzleGenerator extends EventEmitter {
                 const { headers, moves, positions } = game;
                 if (moves.length <= startPly) continue;
 
+                let gameTarget = targetSide;
+                if (playerName) {
+                    if ((headers.White || '').toLowerCase() === playerName) gameTarget = 'white';
+                    else if ((headers.Black || '').toLowerCase() === playerName) gameTarget = 'black';
+                    else continue; // not one of this player's games
+                }
+
                 const gameDetails = {
                     white: headers.White || 'White Player',
                     black: headers.Black || 'Black Player',
                     event: headers.Event || 'Casual Game',
                     date: headers.Date || 'Unknown Date',
                     result: headers.Result || '*',
-                    gameIndex: g + 1
+                    gameIndex: g + 1,
+                    site: headers.Link || (/^https?:/.test(headers.Site || '') ? headers.Site : null),
+                    playerColor: playerName ? gameTarget : null
                 };
 
                 await this.evaluator.newGame();
@@ -125,6 +137,7 @@ class PuzzleGenerator extends EventEmitter {
                 });
 
                 const onlyMates = enabledTypes.mate && !enabledTypes.blunder && !enabledTypes.better_move;
+                const isMine = (side) => gameTarget === 'both' || side === gameTarget[0];
                 const evals = new Array(positions.length).fill(null);
 
                 // win% for the side to move at each position
@@ -164,8 +177,7 @@ class PuzzleGenerator extends EventEmitter {
                     const hasMate = mateIn !== null && mateIn > 0;
                     if (!hasMate) mateStreak[solver] = false;
 
-                    if (targetSide === 'white' && solver !== 'w') return;
-                    if (targetSide === 'black' && solver !== 'b') return;
+                    if (!isMine(solver)) return;
                     if (j <= blockedUntil[solver]) return;
                     if (seen.has(fenKey(positions[j].fen))) return;
 
@@ -237,7 +249,8 @@ class PuzzleGenerator extends EventEmitter {
                         prevFen: j >= 1 ? positions[j - 1].fen : null,
                         prevMove,
                         gameMove: moves[j],
-                        gameDetails
+                        gameDetails,
+                        source
                     });
                     if (!puzzle) return;
 
@@ -253,7 +266,7 @@ class PuzzleGenerator extends EventEmitter {
                 for (let i = Math.max(0, startPly - 1); i < positions.length; i++) {
                     if (this.shouldStop) break;
                     const stm = positions[i].fen.split(' ')[1];
-                    const skip = onlyMates && targetSide !== 'both' && stm !== targetSide[0];
+                    const skip = onlyMates && !isMine(stm);
 
                     if (!skip) {
                         this.send('puzzle-gen-progress', {
@@ -337,7 +350,7 @@ class PuzzleGenerator extends EventEmitter {
         return { solution: line, solutionSan: san, finalWin, mateIn: kind === 'mate' ? Math.ceil(line.length / 2) : null, endsInMate: check.isCheckmate() };
     }
 
-    createPuzzle({ kind, defensive = false, rootFen, built, prevFen, prevMove, gameMove, gameDetails }) {
+    createPuzzle({ kind, defensive = false, rootFen, built, prevFen, prevMove, gameMove, gameDetails, source = null }) {
         const turn = rootFen.split(' ')[1];
         const moveNumber = parseInt(rootFen.split(' ')[5], 10) || 1;
         const themes = A.detectThemes(rootFen, built.solution, { finalWin: built.finalWin ?? undefined });
@@ -352,30 +365,33 @@ class PuzzleGenerator extends EventEmitter {
         const foundInGame = gameMoveUci === built.solution[0];
 
         let title, description, playedBlunder = null;
+        const you = !!gameDetails?.playerColor; // puzzle from the player's own game
         if (kind === 'mate') {
             title = `Mate in ${built.mateIn}`;
             description = `Find the forced checkmate in ${built.mateIn} move${built.mateIn > 1 ? 's' : ''}.`;
             if (!foundInGame && gameMove) {
-                description += ` In the game, ${gameMove.san} was played instead.`;
+                description += you ? ` In your game you played ${gameMove.san}.` : ` In the game, ${gameMove.san} was played instead.`;
                 playedBlunder = gameMove.san;
             }
         } else if (kind === 'blunder' && defensive) {
             title = 'Punish the Mistake';
             playedBlunder = prevMove ? prevMove.san : null;
             description = `${playedBlunder ? playedBlunder + ' was a mistake. ' : ''}Only one move takes advantage of it — find it!`;
-            if (!foundInGame && gameMove) description += ` (The game continued ${gameMove.san}.)`;
+            if (!foundInGame && gameMove) description += you ? ` (You played ${gameMove.san}.)` : ` (The game continued ${gameMove.san}.)`;
         } else if (kind === 'blunder') {
             title = 'Punish the Blunder';
             playedBlunder = prevMove ? prevMove.san : null;
             description = `${playedBlunder ? playedBlunder + ' was a blunder. ' : ''}Find the winning continuation!`;
-            if (!foundInGame && gameMove) description += ` (The game continued ${gameMove.san}.)`;
+            if (!foundInGame && gameMove) description += you ? ` (You played ${gameMove.san}.)` : ` (The game continued ${gameMove.san}.)`;
         } else if (defensive) {
             title = 'Find the Only Move';
             if (foundInGame) {
                 description = 'Only one move holds the position here. Find it!';
             } else {
                 playedBlunder = gameMove ? gameMove.san : null;
-                description = `Only one move holds the position here — ${playedBlunder || 'the game move'} lost ground. Find the defence!`;
+                description = you
+                    ? `Only one move holds the position here — your ${playedBlunder || 'move'} lost ground. Find the defence!`
+                    : `Only one move holds the position here — ${playedBlunder || 'the game move'} lost ground. Find the defence!`;
             }
         } else {
             title = foundInGame ? 'Find the Only Move' : 'Find the Winning Move';
@@ -383,7 +399,9 @@ class PuzzleGenerator extends EventEmitter {
                 description = 'Only one move keeps the advantage here. Find it!';
             } else {
                 playedBlunder = gameMove ? gameMove.san : null;
-                description = `There was a winning tactic here, but ${playedBlunder || 'another move'} was played. Find it!`;
+                description = you
+                    ? `There was a winning tactic here, but you played ${playedBlunder || 'another move'}. Find it!`
+                    : `There was a winning tactic here, but ${playedBlunder || 'another move'} was played. Find it!`;
             }
         }
 
@@ -407,6 +425,8 @@ class PuzzleGenerator extends EventEmitter {
             tags,
             difficulty,
             gameDetails: { ...gameDetails, moveNumber },
+            // where the game came from: { type: 'tournament' | 'online' | 'pgn', label, platform?, username? }
+            source,
             createdAt: Date.now(),
             version: 2
         };

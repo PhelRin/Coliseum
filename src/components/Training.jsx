@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Chess } from 'chess.js';
 import { ChessBoard } from './ChessBoard';
 import { EvalBar } from './EvalBar';
+import { PuzzleSource } from './training/PuzzleSource';
 import { 
     Zap, 
     BookOpen, 
@@ -52,8 +53,7 @@ export default function Training({ onAnalyzePosition }) {
     // PGN Data
     const [pgnContent, setPgnContent] = useState('');
     const [pgnFileName, setPgnFileName] = useState('');
-    const [isDragging, setIsDragging] = useState(false);
-    const fileInputRef = useRef(null);
+    const [sourceInfo, setSourceInfo] = useState({ playerName: null, source: null }); // who/where the games are from
 
     // Scan State
     const [isScanning, setIsScanning] = useState(false);
@@ -70,6 +70,7 @@ export default function Training({ onAnalyzePosition }) {
     // Library State
     const [library, setLibrary] = useState([]);
     const [libraryFilter, setLibraryFilter] = useState('all'); // 'all' | 'mate' | 'blunder' | 'better_move'
+    const [librarySource, setLibrarySource] = useState('all'); // 'all' | 'engine' | 'mine'
     const [librarySearch, setLibrarySearch] = useState('');
     const [selectedPuzzle, setSelectedPuzzle] = useState(null);
 
@@ -85,7 +86,9 @@ export default function Training({ onAnalyzePosition }) {
         if (window.electronAPI) {
             window.electronAPI.scanEngines().then(found => {
                 setEngines(found);
-                if (found.length > 0) setSelectedEngine(found[0]);
+                // puzzles need a strong, neutral judge: prefer Stockfish when it is installed
+                const sf = found.find(e => /stockfish/i.test(`${e.name} ${e.path}`));
+                if (found.length > 0) setSelectedEngine(sf || found[0]);
             });
 
             window.electronAPI.getStore('puzzlesLibrary').then(saved => {
@@ -642,43 +645,6 @@ export default function Training({ onAnalyzePosition }) {
     };
 
     // Scan operations
-    const handleDragOver = (e) => {
-        e.preventDefault();
-        setIsDragging(true);
-    };
-
-    const handleDragLeave = () => {
-        setIsDragging(false);
-    };
-
-    const handleDrop = (e) => {
-        e.preventDefault();
-        setIsDragging(false);
-        const file = e.dataTransfer.files[0];
-        if (file && (file.name.endsWith('.pgn') || file.name.endsWith('.txt'))) {
-            loadPgnFile(file);
-        } else {
-            alert("Please drag and drop a valid PGN file.");
-        }
-    };
-
-    const handleFileSelect = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            loadPgnFile(file);
-        }
-    };
-
-    const loadPgnFile = (file) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            setPgnContent(event.target.result);
-            setPgnFileName(file.name);
-            addLog(`Loaded PGN file: ${file.name}`);
-        };
-        reader.readAsText(file);
-    };
-
     const startPgnScan = () => {
         if (!selectedEngine) {
             alert("Please select a chess engine first.");
@@ -707,7 +673,9 @@ export default function Training({ onAnalyzePosition }) {
                     scanSpeed,
                     types,
                     mateRange,
-                    targetSide,
+                    targetSide: sourceInfo.playerName ? 'both' : targetSide,
+                    playerName: sourceInfo.playerName || null,
+                    source: sourceInfo.source || null,
                     sensitivity,
                     maxPlies: (parseInt(maxMoves) * 2) || 10
                 }
@@ -726,6 +694,9 @@ export default function Training({ onAnalyzePosition }) {
     // Filters
     const getFilteredLibrary = () => {
         return library.filter(p => {
+            const mine = p.source?.type === 'online';
+            if (librarySource === 'mine' && !mine) return false;
+            if (librarySource === 'engine' && mine) return false;
             if (libraryFilter !== 'all') {
                 if (libraryFilter === 'unsolved') {
                     if (p.progress?.lastResult === 'solved') return false;
@@ -810,7 +781,7 @@ export default function Training({ onAnalyzePosition }) {
                     </div>
                     <div>
                         <h2 className="text-lg font-bold text-white tracking-wide">Tactics Trainer</h2>
-                        <p className="text-xs text-muted-foreground">Generate puzzles from tournament games and master chess patterns</p>
+                        <p className="text-xs text-muted-foreground">Turn engine tournaments or your own Chess.com and Lichess games into puzzles</p>
                     </div>
                 </div>
 
@@ -836,7 +807,24 @@ export default function Training({ onAnalyzePosition }) {
                     
                     {/* LEFT PANEL: CONFIGURATION */}
                     <div className="w-full lg:w-96 bg-card border border-white/5 rounded-2xl p-5 flex flex-col gap-5 overflow-y-auto hidden-scrollbar shrink-0">
-                        <h3 className="font-bold text-sm text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-1">
+                        <PuzzleSource
+                            disabled={isScanning}
+                            loadedLabel={pgnContent ? pgnFileName : ''}
+                            onLoaded={({ pgn, label, playerName, source }) => {
+                                setPgnContent(pgn);
+                                setPgnFileName(label);
+                                setSourceInfo({ playerName, source });
+                                if (playerName) setScanSpeed('100'); // 100 games: keep it quick by default
+                                addLog(`Loaded ${label}`);
+                            }}
+                            onClear={() => {
+                                setPgnContent('');
+                                setPgnFileName('');
+                                setSourceInfo({ playerName: null, source: null });
+                            }}
+                        />
+
+                        <h3 className="font-bold text-sm text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-1 pt-4 border-t border-white/5">
                             <Sliders size={16} className="text-primary" /> Scan Settings
                         </h3>
 
@@ -905,6 +893,9 @@ export default function Training({ onAnalyzePosition }) {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="flex flex-col gap-2">
                                 <label className="text-xs font-medium text-white">Target Side</label>
+                                {sourceInfo.playerName ? (
+                                    <div className="w-full bg-black/20 border border-white/5 rounded-xl p-2.5 text-xs text-primary font-semibold">Your moves</div>
+                                ) : (
                                 <select
                                     className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs text-white focus:border-primary outline-none"
                                     value={targetSide}
@@ -918,6 +909,7 @@ export default function Training({ onAnalyzePosition }) {
                                     <option value="white">White to Play</option>
                                     <option value="black">Black to Play</option>
                                 </select>
+                                )}
                             </div>
 
                             <div className="flex flex-col gap-2">
@@ -1030,48 +1022,6 @@ export default function Training({ onAnalyzePosition }) {
                                     </div>
                                 </label>
 
-                            </div>
-                        </div>
-
-                        {/* Drag and Drop PGN upload */}
-                        <div className="flex flex-col gap-2">
-                            <label className="text-xs font-medium text-white flex justify-between">
-                                Input PGN File / Text
-                                {pgnContent && (
-                                    <button 
-                                        onClick={() => { setPgnContent(''); setPgnFileName(''); }}
-                                        className="text-[10px] text-red-400 hover:text-red-300 font-bold"
-                                        disabled={isScanning}
-                                    >
-                                        Clear
-                                    </button>
-                                )}
-                            </label>
-
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={handleFileSelect}
-                                accept=".pgn,.txt"
-                                className="hidden"
-                            />
-
-                            <div
-                                onDragOver={handleDragOver}
-                                onDragLeave={handleDragLeave}
-                                onDrop={handleDrop}
-                                onClick={() => !isScanning && fileInputRef.current?.click()}
-                                className={`h-32 border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-4 text-center cursor-pointer transition-all ${
-                                    isDragging ? 'border-primary bg-primary/5' : 'border-white/10 bg-black/20 hover:border-primary/40 hover:bg-white/5'
-                                } ${isScanning ? 'pointer-events-none opacity-50' : ''}`}
-                            >
-                                <Upload size={24} className={`mb-2 ${pgnFileName ? 'text-primary' : 'text-muted-foreground'}`} />
-                                <span className="text-xs font-semibold text-white">
-                                    {pgnFileName ? pgnFileName : 'Drag & drop tournament PGN'}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground mt-1">
-                                    or click to select file
-                                </span>
                             </div>
                         </div>
 
@@ -1296,6 +1246,23 @@ export default function Training({ onAnalyzePosition }) {
                                 </button>
                             )}
 
+                            <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 border border-white/5 rounded-xl">
+                                {[
+                                    { val: 'all', label: 'All' },
+                                    { val: 'engine', label: 'Engine Games' },
+                                    { val: 'mine', label: 'My Games' }
+                                ].map(opt => (
+                                    <button
+                                        key={opt.val}
+                                        type="button"
+                                        onClick={() => setLibrarySource(opt.val)}
+                                        className={`py-1.5 rounded-lg text-[10px] font-semibold transition-all ${librarySource === opt.val ? 'bg-primary text-black' : 'text-muted-foreground hover:text-white'}`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="text-[10px] text-muted-foreground block mb-1">Filter Type</label>
@@ -1425,6 +1392,15 @@ export default function Training({ onAnalyzePosition }) {
                                             <span className="text-xs text-muted-foreground truncate">
                                                 {selectedPuzzle.gameDetails.event} | Move {selectedPuzzle.gameDetails.moveNumber} ({selectedPuzzle.gameDetails.date})
                                             </span>
+                                            {selectedPuzzle.gameDetails.site && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => window.electronAPI?.send('open-external', selectedPuzzle.gameDetails.site)}
+                                                    className="self-start text-[11px] text-primary hover:underline"
+                                                >
+                                                    View the game online
+                                                </button>
+                                            )}
                                         </div>
                                         
                                         <div className={`px-3 py-2 rounded-lg text-xs font-black shrink-0 border ${

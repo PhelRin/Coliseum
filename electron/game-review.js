@@ -225,11 +225,16 @@ function classifyMoves({ moves, positions, evals, books = null }) {
 function summarise(result, startColor) {
     const acc = A.gameAccuracy(result.evalSeries.map(e => e.win), result.moveAccs, startColor);
     const acpl = (arr) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+    const whiteAccuracy = acc.white ?? 100;
+    const blackAccuracy = acc.black ?? 100;
     return {
-        whiteAccuracy: acc.white ?? 100,
-        blackAccuracy: acc.black ?? 100,
+        whiteAccuracy,
+        blackAccuracy,
         whiteAcpl: acpl(result.cpLoss.w),
-        blackAcpl: acpl(result.cpLoss.b)
+        blackAcpl: acpl(result.cpLoss.b),
+        // cpLoss only holds real decisions (no book or forced moves)
+        whiteEstimate: A.estimateElo(whiteAccuracy, result.cpLoss.w.length),
+        blackEstimate: A.estimateElo(blackAccuracy, result.cpLoss.b.length)
     };
 }
 

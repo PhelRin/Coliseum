@@ -15,6 +15,7 @@ import { audio } from './utils/audio';
 import { EngineStatsModal, getRatingTier } from './components/EngineStatsModal';
 import Training from './components/Training';
 import { BoardEditor } from './components/BoardEditor';
+import { PlayView } from './components/PlayView';
 
 function App() {
     const [activeTab, setActiveTab] = useState('home'); // 'home', 'match', 'engines', 'review', 'twitch'
@@ -213,6 +214,13 @@ function App() {
 
                 <nav className="space-y-1 flex-1 min-h-0 overflow-y-auto overflow-x-hidden -mx-1 px-1 sidebar-scroll">
                     <SidebarItem
+                        active={activeTab === 'play'}
+                        onClick={() => handleTabChange('play')}
+                        icon={<Play />}
+                        label="Play"
+                        isSidebarCollapsed={isSidebarCollapsed}
+                    />
+                    <SidebarItem
                         active={activeTab === 'home'}
                         onClick={() => handleTabChange('home')}
                         icon={<Trophy />}
@@ -339,7 +347,8 @@ function App() {
                 {/* Top Bar (Optional, for now just spacing) */}
                 <div className="h-12 border-b border-white/5 flex items-center px-4 lg:px-6 xl:px-8 bg-background/50 backdrop-blur-xl shrink-0 z-40">
                     <h2 className="text-base lg:text-lg font-bold capitalize text-foreground/80 truncate">
-                        {activeTab === 'home' ? (tournamentActive ? 'Tournament' : 'Tournament Lobby') :
+                        {activeTab === 'play' ? 'Play' :
+                            activeTab === 'home' ? (tournamentActive ? 'Tournament' : 'Tournament Lobby') :
                             activeTab === 'match' ? (matchActive ? 'Live Arena' : 'Match Setup') :
                                 activeTab === 'elo' ? 'Strength Estimation' :
                                     activeTab === 'analysis' ? 'Game Analysis' :
@@ -357,6 +366,7 @@ function App() {
                         {activeTab === 'home' && (
                             tournamentActive ? <TournamentDashboard onExit={() => setTournamentActive(false)} /> : <TournamentSetup onStart={startTournament} />
                         )}
+                        {activeTab === 'play' && <PlayView onReviewGame={(pgn) => handleAnalyzePosition(pgn, true)} />}
                         {activeTab === 'match' && (
                             matchActive ? <Arena matchParams={matchParams} onBack={endMatch} /> : <MatchSetup onStart={startMatch} />
                         )}
