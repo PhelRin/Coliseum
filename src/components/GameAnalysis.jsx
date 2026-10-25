@@ -25,6 +25,23 @@ const pvToSan = (fen, pv, max = 10) => {
     }
 };
 
+// Rough strength shown under each accuracy score in the review
+const EstimatedElo = ({ estimate }) => {
+    if (estimate === undefined) return null; // review made by an older version
+    return (
+        <div className="mt-2 pt-2 border-t border-white/5" title="Estimated from this game's accuracy. One game is a small sample, so treat it as a rough guide.">
+            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Estimated Elo</p>
+            {estimate ? (
+                <p className="text-base font-bold text-primary font-mono mt-0.5">
+                    {estimate.elo}<span className="text-[10px] text-muted-foreground font-normal"> ±{estimate.margin}</span>
+                </p>
+            ) : (
+                <p className="text-[11px] text-muted-foreground mt-0.5">Game too short</p>
+            )}
+        </div>
+    );
+};
+
 export function GameAnalysis({ initialPgn, autoAnalyze = false }) {
     const [mode, setMode] = useState('analysis'); // 'analysis' | 'load'
     const [isInitialPgnLoaded, setIsInitialPgnLoaded] = useState(!initialPgn);
@@ -723,8 +740,8 @@ export function GameAnalysis({ initialPgn, autoAnalyze = false }) {
             <div className="min-w-0 flex flex-col justify-center items-center relative min-h-[360px] md:h-[calc(100vh-150px)] xl:h-auto xl:min-h-0">
                 {pgnHeaders && Object.keys(pgnHeaders).length > 0 && (
                     <div className="w-full max-w-[650px] bg-card border border-white/5 rounded-xl p-4 mb-4 flex justify-between items-center gap-3 shadow-lg transition-all">
-                        <div className="flex flex-col gap-1">
-                            <span className="text-white font-bold text-lg flex items-center gap-2">
+                        <div className="flex flex-col gap-1 min-w-0">
+                            <span className="text-white font-bold text-lg flex flex-wrap items-center gap-x-2">
                                 {pgnHeaders.White || 'White'} {pgnHeaders.WhiteElo ? <span className="text-muted-foreground font-normal text-sm">({pgnHeaders.WhiteElo})</span> : ''}
                                 <span className="text-primary/50 font-normal mx-2 text-sm italic">vs</span>
                                 {pgnHeaders.Black || 'Black'} {pgnHeaders.BlackElo ? <span className="text-muted-foreground font-normal text-sm">({pgnHeaders.BlackElo})</span> : ''}
@@ -735,7 +752,7 @@ export function GameAnalysis({ initialPgn, autoAnalyze = false }) {
                             </span>
                         </div>
                         {pgnHeaders.Result && pgnHeaders.Result !== '*' && (
-                            <div className="text-sm font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg shadow-[0_0_10px_rgba(74,222,128,0.1)]">
+                            <div className="text-sm font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg shadow-[0_0_10px_rgba(74,222,128,0.1)] whitespace-nowrap shrink-0">
                                 {pgnHeaders.Result}
                             </div>
                         )}
@@ -959,11 +976,13 @@ export function GameAnalysis({ initialPgn, autoAnalyze = false }) {
                                                 <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider truncate">{pgnHeaders?.White || 'White'}</p>
                                                 <p className="text-3xl font-extrabold text-white mt-1 font-mono tracking-tight">{reviewResults.whiteAccuracy}</p>
                                                 {reviewResults.whiteAcpl !== undefined && <p className="text-[10px] text-muted-foreground font-mono mt-1">ACPL {reviewResults.whiteAcpl}</p>}
+                                                <EstimatedElo estimate={reviewResults.whiteEstimate} />
                                             </div>
                                             <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-white/5 rounded-xl p-3.5 text-center shadow-inner">
                                                 <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider truncate">{pgnHeaders?.Black || 'Black'}</p>
                                                 <p className="text-3xl font-extrabold text-zinc-300 mt-1 font-mono tracking-tight">{reviewResults.blackAccuracy}</p>
                                                 {reviewResults.blackAcpl !== undefined && <p className="text-[10px] text-muted-foreground font-mono mt-1">ACPL {reviewResults.blackAcpl}</p>}
+                                                <EstimatedElo estimate={reviewResults.blackEstimate} />
                                             </div>
                                         </div>
                                         {reviewResults.evalSeries?.length > 1 && (

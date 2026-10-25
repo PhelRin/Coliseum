@@ -100,6 +100,8 @@ class Arbiter extends EventEmitter {
         const bInitial = bTC ? (bTC.type === 'unlimited' ? -1 : bTC.initial) : (this.settings.initial || 60000);
         const bInc = bTC ? (bTC.type === 'unlimited' ? 0 : bTC.inc) : (this.settings.inc || 0);
         this.clocks = { w: wTC && wTC.movetime ? -1 : wInitial, b: bTC && bTC.movetime ? -1 : bInitial };
+        // untimed sides are tracked separately: a running clock can pass through exactly -1 ms inside the time margin
+        this.untimed = { w: this.clocks.w === -1, b: this.clocks.b === -1 };
         this.timeIncrements = { w: wInc || 0, b: bInc || 0 };
         this.timeControlConfigs = {
             w: wTC || { initial: this.settings.initial, inc: this.settings.inc },
@@ -219,7 +221,7 @@ class Arbiter extends EventEmitter {
     }
 
     flagged(color) {
-        return this.clocks[color] !== -1 && this.clocks[color] <= -this.timeMargin;
+        return !this.untimed[color] && this.clocks[color] <= -this.timeMargin;
     }
 
     applyMove(uci, currentMatchId, label) {
@@ -241,7 +243,7 @@ class Arbiter extends EventEmitter {
     }
 
     displayClocks() {
-        return { w: this.clocks.w === -1 ? -1 : Math.max(0, this.clocks.w), b: this.clocks.b === -1 ? -1 : Math.max(0, this.clocks.b) };
+        return { w: this.untimed.w ? -1 : Math.max(0, this.clocks.w), b: this.untimed.b ? -1 : Math.max(0, this.clocks.b) };
     }
 
     async playNextMove(currentMatchId) {
@@ -308,7 +310,7 @@ class Arbiter extends EventEmitter {
                 const now = Date.now();
                 const delta = now - this.lastTickTime;
                 this.lastTickTime = now;
-                if (this.clocks[this.activeColor] !== -1) this.clocks[this.activeColor] -= delta;
+                if (!this.untimed[this.activeColor]) this.clocks[this.activeColor] -= delta;
                 if (this.flagged(this.activeColor)) {
                     clearInterval(this.clockInterval);
                     this.ui('match-log', `Time forfeit by ${this.activeColor === 'w' ? 'White' : 'Black'}`);
@@ -331,8 +333,8 @@ class Arbiter extends EventEmitter {
             goOptions.movetime = activeTC.movetime;
         } else {
             // never tell an engine it has negative time
-            goOptions.wtime = this.clocks.w === -1 ? 1800000 : Math.max(1, Math.round(this.clocks.w));
-            goOptions.btime = this.clocks.b === -1 ? 1800000 : Math.max(1, Math.round(this.clocks.b));
+            goOptions.wtime = this.untimed.w ? 1800000 : Math.max(1, Math.round(this.clocks.w));
+            goOptions.btime = this.untimed.b ? 1800000 : Math.max(1, Math.round(this.clocks.b));
             goOptions.winc = this.timeIncrements.w || 0;
             goOptions.binc = this.timeIncrements.b || 0;
         }
@@ -344,7 +346,7 @@ class Arbiter extends EventEmitter {
             if (this.clockInterval) clearInterval(this.clockInterval);
 
             const tc = this.timeControlConfigs[this.activeColor];
-            if (tc && !tc.movetime && this.clocks[this.activeColor] !== -1) {
+            if (tc && !tc.movetime && !this.untimed[this.activeColor]) {
                 const now = Date.now();
                 this.clocks[this.activeColor] -= now - this.lastTickTime;
                 if (this.flagged(this.activeColor)) {
@@ -460,7 +462,7 @@ class Arbiter extends EventEmitter {
         if (this.clockInterval) clearInterval(this.clockInterval);
 
         const activeTC = this.timeControlConfigs[this.activeColor];
-        if (activeTC && !activeTC.movetime && this.clocks[this.activeColor] !== -1) {
+        if (activeTC && !activeTC.movetime && !this.untimed[this.activeColor]) {
             this.clocks[this.activeColor] -= Date.now() - this.lastTickTime;
             if (this.flagged(this.activeColor)) {
                 this.endMatchWithReason(this.activeColor === 'w' ? 'black' : 'white', 'Time Forfeit');

@@ -15,6 +15,8 @@ const { TournamentManager } = require('./tournament');
 const { EloManager } = require('./elo-manager');
 const { ConfigManager } = require('./config-manager');
 const { Career } = require('./career');
+const { TournamentArchive } = require('./tournament-archive');
+const { fetchOnlineGames } = require('./online-games');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -90,10 +92,12 @@ const createWindow = () => {
     eloManager = new EloManager(mainWindow, makeArbiter('elo-game'), career);
 
     let store;
+    let tournamentArchive = null;
     import('electron-store').then((module) => {
         const Store = module.default;
         store = new Store();
         tournamentManager.store = store;
+        tournamentArchive = new TournamentArchive(store, path.join(app.getPath('userData'), 'tournaments'));
         career.setStore(store);
         // fill in error bars / migrate ratings from older versions
         try {
@@ -103,7 +107,29 @@ const createWindow = () => {
         }
     }).catch(console.error);
 
+    // Keep every finished or stopped tournament for the Tactics Trainer
+    tournamentManager.on('ended', (state) => {
+        try {
+            if (tournamentArchive) tournamentArchive.save(state, tournamentManager.getCombinedPgn());
+        } catch (e) {
+            console.error('[Archive] Could not save the tournament:', e);
+        }
+    });
+
     // --- IPC Handlers ---
+
+    ipcMain.handle('list-tournament-archive', () => (tournamentArchive ? tournamentArchive.list() : []));
+    ipcMain.handle('read-tournament-archive', (_, id) => (tournamentArchive ? tournamentArchive.read(id) : null));
+    ipcMain.handle('delete-tournament-archive', (_, id) => (tournamentArchive ? tournamentArchive.remove(id) : false));
+
+    // Recent games from Chess.com / Lichess for the Tactics Trainer
+    ipcMain.handle('fetch-online-games', async (_, opts) => {
+        try {
+            return { ok: true, ...(await fetchOnlineGames(opts || {})) };
+        } catch (e) {
+            return { ok: false, error: e.message || String(e) };
+        }
+    });
 
     ipcMain.on('open-external', (_, url) => {
         const parsedUrl = new URL(url);
@@ -352,6 +378,16 @@ const createWindow = () => {
     });
 
     // 2. Match Controls (Arbiter)
+    const validFen = (fen) => {
+        if (typeof fen !== 'string' || !fen.trim()) return undefined;
+        try {
+            new (require('chess.js').Chess)(fen.trim());
+            return fen.trim();
+        } catch (e) {
+            return undefined;
+        }
+    };
+
     ipcMain.on('start-match', (event, params) => {
         if (tournamentManager.active) return; // Don't interrupt tournament
         if (eloManager.active) eloManager.stop(); // Stop Elo if starting manual match
@@ -364,7 +400,9 @@ const createWindow = () => {
             initial: params.settings.initial,
             inc: params.settings.inc,
             whiteBook: params.settings.whiteBook,
-            blackBook: params.settings.blackBook
+            blackBook: params.settings.blackBook,
+            // Play tab: start from a custom position (checked by chess.js in the arbiter)
+            startFen: validFen(params.settings.startFen)
         };
 
         // If it was 'minutes' type from Tournament (different path), handle it?

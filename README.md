@@ -25,20 +25,23 @@ Pick some engines and let them play each other non-stop. Their ratings are worke
 ### Live Games
 Watch engine games live with each engine's name, rating, clock and evaluation. When several games run at once you can see them all, and click any one to follow it on the big board. The layout adjusts to your window size.
 
+### Play
+Play against AggroChess, an aggressive engine in the spirit of Mikhail Tal that comes with Coliseum, in two clicks: pick a colour and a time control, or start from any position by pasting a FEN. You can switch to any other installed engine, and review the game when it's over.
+
 ### Quick Match
-Play a single game between two engines, or play against an engine yourself. Finished games are saved to the Archive, where you can search them and export PGNs.
+Play a single game between two engines, or between you and an engine with full control over each side's time and opening book. Finished games are saved to the Archive, where you can search them and export PGNs.
 
 ### UCI Engine Management
 Import any UCI engine by dropping it into the app, tweak its options, and save custom configurations. Coliseum keeps a career record for every engine: wins, draws, losses, results as White and Black, and its rating over time.
 
 ### Game Review & Analysis
-Review any game with an engine: accuracy scores, an evaluation graph you can click to jump through the game, key moments, and a classification for every move (Brilliant, Great, Best, Excellent, Good, Book, Inaccuracy, Mistake, Miss, Blunder). Weak moves show the engine's best alternative on the board, and live analysis shows the top three engine lines.
+Review any game with an engine: accuracy scores, an evaluation graph you can click to jump through the game, key moments, a classification for every move (Brilliant, Great, Best, Excellent, Good, Book, Inaccuracy, Mistake, Miss, Blunder), and an estimated Elo for each player based on how accurately they played. Weak moves show the engine's best alternative on the board, and live analysis shows the top three engine lines.
 
 ### Board Editor
 Set up any position, choose the side to move and castling rights, and send it straight to analysis.
 
 ### Tactics Trainer
-Scan your tournament PGN files to find forced checkmates, blunder refutations, and missed tactics. Every puzzle is checked by the engine so the solution really works, and the trainer tracks your solved puzzles, success rate and streaks.
+Turn games into puzzles: forced checkmates, blunder refutations and missed tactics. Pick any engine tournament you've played in Coliseum (they're kept automatically), type your Chess.com or Lichess username to use your own last 25, 50 or 100 games (puzzles come from your moves only), or load any PGN file. Every puzzle is checked by the engine so the solution really works, and the trainer tracks your solved puzzles, success rate and streaks.
 
 ### Twitch Watch Party
 Connect your Twitch channel and run a non-stop "Winner Stays On" engine tournament for your stream.

@@ -117,6 +117,7 @@ class TournamentManager extends EventEmitter {
         if (this.state) this.state.stoppedAt = Date.now();
         this.stopArbiters();
         this.send('tournament-finished', { cancelled: true, ...this.snapshot() });
+        this.emit('ended', this.state);
     }
 
     finishTournament() {
@@ -127,6 +128,7 @@ class TournamentManager extends EventEmitter {
         this.clearState();
         this.sendUpdate();
         this.send('tournament-finished', this.snapshot());
+        this.emit('ended', this.state);
     }
 
     stopArbiters() {
