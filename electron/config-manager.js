@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { launchFile } = require('./linked-engines');
 
 class ConfigManager {
     constructor(userDataPath) {
@@ -31,6 +32,14 @@ class ConfigManager {
         return this.options[enginePath] || {};
     }
 
+    // a linked engine moved: its saved options follow it
+    renameEngine(oldPath, newPath) {
+        if (!this.options[oldPath]) return;
+        this.options[newPath] = { ...this.options[oldPath], ...(this.options[newPath] || {}) };
+        delete this.options[oldPath];
+        this.save();
+    }
+
     updateOptions(enginePath, newOptions) {
         this.options[enginePath] = { ...(this.options[enginePath] || {}), ...newOptions };
         this.save();
@@ -39,7 +48,7 @@ class ConfigManager {
     // Spawn engine to get available options
     async fetchEngineOptions(enginePath) {
         return new Promise((resolve, reject) => {
-            const engine = spawn(enginePath, { cwd: path.dirname(enginePath) });
+            const engine = spawn(launchFile(enginePath), { cwd: path.dirname(enginePath) });
             let output = '';
             let options = [];
 

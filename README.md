@@ -32,7 +32,7 @@ Play against AggroChess, an aggressive engine in the spirit of Mikhail Tal that 
 Play a single game between two engines, or between you and an engine with full control over each side's time and opening book. Finished games are saved to the Archive, where you can search them and export PGNs.
 
 ### UCI Engine Management
-Import any UCI engine by dropping it into the app, tweak its options, and save custom configurations. Coliseum keeps a career record for every engine: wins, draws, losses, results as White and Black, and its rating over time.
+Import any UCI engine by dropping it into the app, or link it by path so Coliseum uses it from its own folder (handy for engine developers: rebuild any time, and Coliseum runs the newest build). Tweak its options and save custom configurations. Coliseum keeps a career record for every engine: wins, draws, losses, results as White and Black, and its rating over time.
 
 ### Game Review & Analysis
 Review any game with an engine: accuracy scores, an evaluation graph you can click to jump through the game, key moments, a classification for every move (Brilliant, Great, Best, Excellent, Good, Book, Inaccuracy, Mistake, Miss, Blunder), and an estimated Elo for each player based on how accurately they played. Weak moves show the engine's best alternative on the board, and live analysis shows the top three engine lines.

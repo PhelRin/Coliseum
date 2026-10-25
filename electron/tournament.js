@@ -52,6 +52,7 @@ class TournamentManager extends EventEmitter {
         this.state = null;
         this.arbiters = new Map(); // slot -> arbiter
         this.book = null;
+        this.linked = null; // LinkedEngines, set by main
     }
 
     send(channel, data) {
@@ -83,9 +84,26 @@ class TournamentManager extends EventEmitter {
 
         this.active = true;
         await this.loadBook();
+        this.pinLinkedEngines();
         this.saveState();
         this.sendUpdate();
         this.pump();
+    }
+
+    // Linked engines run from a copy taken now, so their author can rebuild the original
+    // while the tournament plays; every game of the tournament uses the same build.
+    pinLinkedEngines() {
+        if (!this.state) return;
+        if (this.linked) {
+            this.linked.release(this.state.launchPins);
+            this.state.launchPins = this.linked.pin(this.state.config.engines.map((e) => e.path), this.state.launchPins || {});
+        } else {
+            this.state.launchPins = {};
+        }
+    }
+
+    releaseLinkedEngines() {
+        if (this.linked && this.state) this.linked.release(this.state.launchPins);
     }
 
     async resumeTournament(saved) {
@@ -108,6 +126,8 @@ class TournamentManager extends EventEmitter {
         });
         this.active = true;
         await this.loadBook();
+        this.pinLinkedEngines();
+        this.saveState();
         this.sendUpdate();
         this.pump();
     }
@@ -116,6 +136,7 @@ class TournamentManager extends EventEmitter {
         this.active = false;
         if (this.state) this.state.stoppedAt = Date.now();
         this.stopArbiters();
+        this.releaseLinkedEngines();
         this.send('tournament-finished', { cancelled: true, ...this.snapshot() });
         this.emit('ended', this.state);
     }
@@ -125,6 +146,7 @@ class TournamentManager extends EventEmitter {
         this.active = false;
         this.state.finished = true;
         this.state.finishedAt = Date.now();
+        this.releaseLinkedEngines();
         this.clearState();
         this.sendUpdate();
         this.send('tournament-finished', this.snapshot());
@@ -445,6 +467,17 @@ class TournamentManager extends EventEmitter {
         return game.opening;
     }
 
+    launchPathsFor(whitePath, blackPath) {
+        const pins = (this.state && this.state.launchPins) || {};
+        const get = (p) => {
+            if (!pins[p]) return undefined;
+            // the pinned copy was removed (e.g. user data cleaned): pin the current build
+            if (this.linked && !this.linked.stillThere(pins[p])) Object.assign(pins, this.linked.pin([p]));
+            return pins[p];
+        };
+        return { w: get(whitePath), b: get(blackPath) };
+    }
+
     async launch(game) {
         const m = this.state.matches[game.matchId];
         const slot = this.freeSlot();
@@ -466,6 +499,7 @@ class TournamentManager extends EventEmitter {
             blackTimeControl: tc.type === 'unlimited' ? { type: 'unlimited' } : tc.movetime ? { movetime: tc.movetime } : undefined,
             startFen: opening.fen || undefined,
             openingMoves: opening.moves && opening.moves.length ? opening.moves : undefined,
+            launchPaths: this.launchPathsFor(white.path, black.path),
             moveDelay: cfg.concurrency > 1 ? 20 : 80,
             meta: {
                 event: `Coliseum ${formatName(cfg.type)}`,

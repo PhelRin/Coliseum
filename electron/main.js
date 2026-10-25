@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -17,6 +17,7 @@ const { ConfigManager } = require('./config-manager');
 const { Career } = require('./career');
 const { TournamentArchive } = require('./tournament-archive');
 const { fetchOnlineGames } = require('./online-games');
+const { LinkedEngines, setLaunchResolver, samePath } = require('./linked-engines');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -91,12 +92,20 @@ const createWindow = () => {
     tournamentManager = new TournamentManager(mainWindow, makeArbiter('tournament-game'), null);
     eloManager = new EloManager(mainWindow, makeArbiter('elo-game'), career);
 
+    // Linked engines run from a snapshot (a copy of their current build) so the original can
+    // be rebuilt while Coliseum uses it. Tournaments and Elo runs pin their own snapshot.
+    const linkedEngines = new LinkedEngines(null, path.join(app.getPath('userData'), 'linked-engines'));
+    tournamentManager.linked = linkedEngines;
+    eloManager.linked = linkedEngines;
+    setLaunchResolver((p) => linkedEngines.snapshot(p));
+
     let store;
     let tournamentArchive = null;
     import('electron-store').then((module) => {
         const Store = module.default;
         store = new Store();
         tournamentManager.store = store;
+        linkedEngines.store = store;
         tournamentArchive = new TournamentArchive(store, path.join(app.getPath('userData'), 'tournaments'));
         career.setStore(store);
         // fill in error bars / migrate ratings from older versions
@@ -190,13 +199,61 @@ const createWindow = () => {
             }
         }
 
+        let found = [];
         try {
-            return scanDir(enginesPath);
+            found = scanDir(enginesPath);
         } catch (e) {
             console.error("Debug: Scan failed:", e);
-            return [];
+        }
+        // linked engines that are still where they were linked from
+        for (const e of linkedEngines.list()) {
+            if (e.missing || found.some((f) => samePath(f.path, e.path))) continue;
+            found.push({ name: e.name, path: e.path, linked: true });
+        }
+        return found;
+    });
+
+    // ---- Linked engines
+    const engineFilters = process.platform === 'win32'
+        ? [{ name: 'Engines', extensions: ['exe'] }]
+        : [];
+    ipcMain.handle('pick-engine-files', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+            title: 'Add engine by path',
+            buttonLabel: 'Link engine',
+            properties: ['openFile', 'multiSelections'],
+            filters: engineFilters,
+        });
+        return canceled ? [] : filePaths;
+    });
+
+    // a file is linked as it is; a folder links the engines directly inside it
+    ipcMain.handle('link-engine', (_, srcPath) => {
+        try {
+            const stat = fs.statSync(srcPath);
+            if (!stat.isDirectory()) return { ...linkedEngines.add(srcPath), linked: [srcPath] };
+            const files = fs.readdirSync(srcPath)
+                .map((f) => path.join(srcPath, f))
+                .filter((f) => {
+                    try {
+                        return fs.statSync(f).isFile() && (process.platform === 'win32' ? /\.exe$/i.test(f) : (fs.statSync(f).mode & 0o111) !== 0);
+                    } catch (e) {
+                        return false;
+                    }
+                });
+            if (!files.length) return { success: false, error: 'No engine (.exe) found directly inside that folder.' };
+            files.forEach((f) => linkedEngines.add(f));
+            return { success: true, linked: files };
+        } catch (e) {
+            return { success: false, error: e.message };
         }
     });
+    ipcMain.handle('unlink-engine', (_, enginePath) => linkedEngines.remove(enginePath));
+    ipcMain.handle('relink-engine', (_, { oldPath, newPath } = {}) => linkedEngines.relink(oldPath, newPath, (from, to) => {
+        career.renameEngine(from, to);
+        configManager.renameEngine(from, to);
+    }));
+    ipcMain.handle('list-linked-engines', () => linkedEngines.list());
 
     ipcMain.handle('scan-books', () => {
         let booksPath = findBooksDir();
@@ -307,7 +364,6 @@ const createWindow = () => {
         }
     });
 
-    const { dialog } = require('electron');
     ipcMain.handle('dialog-open-file', async (_, options) => {
         const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
             properties: ['openFile'],

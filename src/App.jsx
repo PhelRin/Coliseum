@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Play, Sword, Trophy, FolderOpen, CircuitBoard, Activity, TrendingUp, Twitch, History, Heart, Volume2, VolumeX, RotateCcw, Zap, Grid } from 'lucide-react';
+import { Settings, Play, Sword, Trophy, FolderOpen, CircuitBoard, Activity, TrendingUp, Twitch, History, Heart, Volume2, VolumeX, RotateCcw, Zap, Grid, Link2, Unlink, AlertTriangle, Copy, X } from 'lucide-react';
 import { MatchSetup } from './components/MatchSetup';
 import { Arena } from './components/Arena';
 import { TournamentSetup } from './components/TournamentSetup';
@@ -40,6 +40,7 @@ function App() {
     const [isDragging, setIsDragging] = useState(false);
     const [installing, setInstalling] = useState(false);
     const [toastMessage, setToastMessage] = useState(null);
+    const [dropChoice, setDropChoice] = useState(null); // dropped engine waiting for Link / Copy
 
     // Audio Settings State
     const [audioEnabled, setAudioEnabled] = useState(true);
@@ -158,20 +159,31 @@ function App() {
                 }
                 setInstalling(false);
             }
+        } else if (window.electronAPI && window.electronAPI.installEngine) {
+            // ask every time: link it where it is, or copy it into the engines folder
+            setDropChoice({ path: file.path, name: file.name });
+        }
+    };
+
+    const addDroppedEngine = async (mode) => {
+        const choice = dropChoice;
+        setDropChoice(null);
+        if (!choice || !window.electronAPI) return;
+        setInstalling(mode);
+        const result = mode === 'link'
+            ? await window.electronAPI.linkEngine(choice.path)
+            : await window.electronAPI.installEngine(choice.path);
+        setInstalling(false);
+        if (result && result.success) {
+            window.dispatchEvent(new Event('refresh-engines'));
+            setActiveTab('engines');
+            const count = mode === 'link' && result.linked ? result.linked.length : 1;
+            setToastMessage(mode === 'link'
+                ? (count > 1 ? `${count} engines linked from ${choice.name}` : `Engine linked: ${choice.name}`)
+                : `Engine Installed: ${choice.name}`);
+            setTimeout(() => setToastMessage(null), 4000);
         } else {
-            if (window.electronAPI && window.electronAPI.installEngine) {
-                setInstalling(true);
-                const result = await window.electronAPI.installEngine(file.path);
-                if (result.success) {
-                    window.dispatchEvent(new Event('refresh-engines'));
-                    setActiveTab('engines');
-                    setToastMessage(`Engine Installed: ${file.name}`);
-                    setTimeout(() => setToastMessage(null), 4000);
-                } else {
-                    alert("Installation failed: " + result.error);
-                }
-                setInstalling(false);
-            }
+            alert((mode === 'link' ? 'Could not link the engine: ' : 'Installation failed: ') + (result ? result.error : 'unknown error'));
         }
     };
 
@@ -402,8 +414,42 @@ function App() {
                 >
                     <div className="pointer-events-none flex flex-col items-center justify-center">
                         <CircuitBoard className="w-24 h-24 text-primary mb-6 animate-bounce drop-shadow-[0_0_20px_rgba(74,222,128,0.5)]" />
-                        <h2 className="text-4xl font-black text-white drop-shadow-xl tracking-tight">Drop Engine or .bin Book to Install</h2>
+                        <h2 className="text-4xl font-black text-white drop-shadow-xl tracking-tight">Drop an Engine or .bin Book</h2>
                         <p className="text-primary font-bold mt-2 uppercase tracking-widest text-sm">Valid inputs: .exe, .bin, Directories</p>
+                    </div>
+                </div>
+            )}
+
+            {dropChoice && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in p-6" onClick={() => setDropChoice(null)}>
+                    <div className="w-full max-w-xl bg-card border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col gap-5" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                                <h3 className="text-xl font-bold text-white">Add engine</h3>
+                                <p className="text-sm text-muted-foreground mt-1 truncate" title={dropChoice.path}>{dropChoice.name}</p>
+                            </div>
+                            <button type="button" onClick={() => setDropChoice(null)} className="p-1.5 rounded-lg text-muted-foreground hover:text-white hover:bg-white/5" aria-label="Cancel">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                onClick={() => addDroppedEngine('link')}
+                                className="text-left p-4 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/15 transition-all flex flex-col gap-2"
+                            >
+                                <span className="flex items-center gap-2 text-primary font-bold"><Link2 size={16} /> Link it</span>
+                                <span className="text-xs text-muted-foreground leading-relaxed">Use it from where it is. Rebuild it any time: Coliseum runs your newest build, and nothing is copied into the engines folder.</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => addDroppedEngine('copy')}
+                                className="text-left p-4 rounded-xl border border-white/10 bg-black/20 hover:bg-white/5 transition-all flex flex-col gap-2"
+                            >
+                                <span className="flex items-center gap-2 text-white font-bold"><Copy size={16} /> Copy it</span>
+                                <span className="text-xs text-muted-foreground leading-relaxed">Put a copy in Coliseum's engines folder. Later changes to the original are not picked up.</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -411,7 +457,7 @@ function App() {
             {installing && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in">
                     <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-primary mb-6 shadow-[0_0_30px_rgba(74,222,128,0.4)]"></div>
-                    <h2 className="text-3xl font-bold text-white tracking-tight drop-shadow-lg">Installing to Vault...</h2>
+                    <h2 className="text-3xl font-bold text-white tracking-tight drop-shadow-lg">{installing === 'link' ? 'Linking engine...' : 'Installing to Vault...'}</h2>
                 </div>
             )}
 
@@ -508,8 +554,10 @@ function EnginesView() {
         if (window.electronAPI) {
             try {
                 const foundEngines = await window.electronAPI.scanEngines();
+                const linked = (window.electronAPI.listLinkedEngines && await window.electronAPI.listLinkedEngines()) || [];
                 const stats = await window.electronAPI.getStore('engineCareerStats') || {};
-                setEngines(foundEngines);
+                // linked engines whose file is gone still show, so they can be relinked or removed
+                setEngines([...(foundEngines || []), ...linked.filter((l) => l.missing)]);
                 setCareerStats(stats);
             } catch (e) {
                 console.error("Failed to load engines or stats:", e);
@@ -527,6 +575,33 @@ function EnginesView() {
         if (window.electronAPI) {
             window.electronAPI.openEnginesFolder();
         }
+    };
+
+    const linkByPath = async () => {
+        if (!window.electronAPI || !window.electronAPI.pickEngineFiles) return;
+        const files = await window.electronAPI.pickEngineFiles();
+        if (!files || !files.length) return;
+        const failed = [];
+        for (const f of files) {
+            const r = await window.electronAPI.linkEngine(f);
+            if (!r || !r.success) failed.push(r ? r.error : f);
+        }
+        if (failed.length) alert('Could not link: ' + failed.join('\n'));
+        fetchEngines();
+    };
+
+    const relink = async (engine) => {
+        const files = await window.electronAPI.pickEngineFiles();
+        if (!files || !files.length) return;
+        const r = await window.electronAPI.relinkEngine(engine.path, files[0]);
+        if (!r || !r.success) alert('Could not relink: ' + (r ? r.error : 'unknown error'));
+        fetchEngines();
+    };
+
+    const unlink = async (engine) => {
+        if (!window.confirm(`Remove ${engine.name} from Coliseum?\n\nOnly the link is removed. The engine file itself is not deleted.`)) return;
+        await window.electronAPI.unlinkEngine(engine.path);
+        fetchEngines();
     };
 
     const handleResetAllElo = async () => {
@@ -568,7 +643,14 @@ function EnginesView() {
                     <h2 className="text-3xl font-bold text-foreground">Local Engines</h2>
                     <p className="text-muted-foreground mt-1">Manage your analysis tools</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap justify-end">
+                    <button
+                        onClick={linkByPath}
+                        title="Use an engine from its own folder (e.g. your build folder) without copying it"
+                        className="px-5 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 hover:border-primary/50 rounded-xl transition-all flex items-center gap-2 text-sm font-medium cursor-pointer"
+                    >
+                        <Link2 size={16} /> Add engine by path
+                    </button>
                     <button
                         onClick={handleResetAllElo}
                         className="px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 hover:border-red-500/40 rounded-xl transition-all flex items-center gap-2 text-sm font-medium cursor-pointer"
@@ -587,7 +669,8 @@ function EnginesView() {
             {engines.length === 0 ? (
                 <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-2xl bg-card/50">
                     <CircuitBoard className="w-12 h-12 text-muted-foreground/30 mb-4" />
-                    <p className="text-muted-foreground">No engines found in the Engines folder.</p>
+                    <p className="text-muted-foreground">No engines yet.</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">Drop an engine anywhere in the window, or use Add engine by path.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -595,40 +678,83 @@ function EnginesView() {
                         const stats = careerStats[engine.path] || { rating: 1500 };
                         const tier = getRatingTier(stats.rating);
                         return (
-                            <div key={i} className="group p-5 rounded-2xl bg-card border border-white/5 hover:border-primary/50 transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)] cursor-default relative overflow-hidden flex flex-col">
+                            <div key={engine.path || i} className={`group p-5 rounded-2xl bg-card border transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)] cursor-default relative overflow-hidden flex flex-col ${engine.missing ? 'border-red-500/30' : 'border-white/5 hover:border-primary/50'}`}>
                                 <div className="absolute top-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_currentColor]" />
+                                    <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] ${engine.missing ? 'bg-red-400 text-red-400' : 'bg-primary'}`} />
                                 </div>
                                 <div className="flex items-center gap-4 mb-4">
-                                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gray-800 to-black border border-white/10 flex items-center justify-center text-primary font-bold text-xl shadow-inner font-mono shrink-0">
+                                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br from-gray-800 to-black border border-white/10 flex items-center justify-center font-bold text-xl shadow-inner font-mono shrink-0 ${engine.missing ? 'text-red-400/70' : 'text-primary'}`}>
                                         {engine.name.substring(0, 2).toUpperCase()}
                                     </div>
                                     <div className="overflow-hidden min-w-0 flex-1">
-                                        <h4 className="font-bold text-foreground truncate" title={engine.name}>{engine.name}</h4>
+                                        <h4 className="font-bold text-foreground truncate" title={engine.path}>{engine.name}</h4>
                                         <div className="flex items-center flex-wrap gap-1.5 mt-1">
                                             <span className="text-[10px] font-mono text-primary font-bold">{stats.rating} ELO</span>
                                             <span className={`text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${tier.badgeClass}`}>
                                                 {tier.title}
                                             </span>
+                                            {engine.linked && !engine.missing && (
+                                                <span className="text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-sky-400/30 bg-sky-400/10 text-sky-300 flex items-center gap-1" title="Linked: used from its own folder">
+                                                    <Link2 size={9} /> Linked
+                                                </span>
+                                            )}
+                                            {engine.missing && (
+                                                <span className="text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-500/30 bg-red-500/10 text-red-300 flex items-center gap-1">
+                                                    <AlertTriangle size={9} /> Not found
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
+                                {engine.linked && (
+                                    <p className={`-mt-1 mb-3 text-[10px] font-mono truncate ${engine.missing ? 'text-red-300/70' : 'text-muted-foreground/60'}`} title={engine.path}>
+                                        {engine.path.length > 46 ? `…${engine.path.slice(-45)}` : engine.path}
+                                    </p>
+                                )}
                                 <div className="mt-auto pt-4 border-t border-white/5 flex justify-between items-center text-xs text-muted-foreground/50 font-mono">
-                                    <div className="flex items-center gap-1.5">
-                                        <button
-                                            onClick={() => setEditingEngine(engine)}
-                                            className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-primary hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
-                                        >
-                                            <Settings size={12} /> Configure
-                                        </button>
-                                        <button
-                                            onClick={() => setViewingStatsEngine(engine)}
-                                            className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-amber-400 hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
-                                        >
-                                            <TrendingUp size={12} /> Stats
-                                        </button>
-                                    </div>
-                                    <span>READY</span>
+                                    {engine.missing ? (
+                                        <div className="flex items-center gap-1.5">
+                                            <button
+                                                onClick={() => relink(engine)}
+                                                className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-primary hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+                                                title="Point Coliseum at the engine's new location. Its rating and settings are kept."
+                                            >
+                                                <Link2 size={12} /> Relink
+                                            </button>
+                                            <button
+                                                onClick={() => unlink(engine)}
+                                                className="px-2.5 py-1.5 bg-white/5 hover:bg-red-500/15 rounded-lg text-red-300 hover:text-red-200 transition-colors flex items-center gap-1 cursor-pointer"
+                                            >
+                                                <Unlink size={12} /> Remove
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1.5">
+                                            <button
+                                                onClick={() => setEditingEngine(engine)}
+                                                className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-primary hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+                                            >
+                                                <Settings size={12} /> Configure
+                                            </button>
+                                            <button
+                                                onClick={() => setViewingStatsEngine(engine)}
+                                                className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-amber-400 hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+                                            >
+                                                <TrendingUp size={12} /> Stats
+                                            </button>
+                                            {engine.linked && (
+                                                <button
+                                                    onClick={() => unlink(engine)}
+                                                    className="p-1.5 bg-white/5 hover:bg-red-500/15 rounded-lg text-muted-foreground hover:text-red-300 transition-colors flex items-center cursor-pointer"
+                                                    title="Unlink (the file itself is not deleted)"
+                                                    aria-label="Unlink"
+                                                >
+                                                    <Unlink size={12} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                    <span className={engine.missing ? 'text-red-400/70' : ''}>{engine.missing ? 'MISSING' : 'READY'}</span>
                                 </div>
                             </div>
                         );
