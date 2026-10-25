@@ -71,7 +71,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Generic IPC (Safe subset)
     invoke: (channel, data) => {
-        let validChannels = ['scan-engines', 'scan-books', 'open-engines-folder', 'install-engine', 'install-book', 'get-engine-options', 'save-engine-options', 'analysis-start', 'dialog-open-file', 'dialog-save-file', 'save-file-content', 'get-store', 'set-store', 'has-saved-tournament', 'get-presets', 'save-preset', 'delete-preset', 'get-audio-settings', 'save-audio-settings', 'get-tournament-pgn', 'puzzle-engine-eval', 'get-system-info', 'career-set-anchor', 'get-tournament-state', 'list-tournament-archive', 'read-tournament-archive', 'delete-tournament-archive', 'fetch-online-games', 'pick-engine-files', 'link-engine', 'unlink-engine', 'relink-engine', 'list-linked-engines'];
+        let validChannels = ['scan-engines', 'scan-books', 'open-engines-folder', 'install-engine', 'install-book', 'get-engine-options', 'save-engine-options', 'analysis-start', 'dialog-open-file', 'dialog-save-file', 'save-file-content', 'get-store', 'set-store', 'has-saved-tournament', 'get-presets', 'save-preset', 'delete-preset', 'get-audio-settings', 'save-audio-settings', 'get-tournament-pgn', 'puzzle-engine-eval', 'get-system-info', 'career-set-anchor', 'get-tournament-state', 'list-tournament-archive', 'read-tournament-archive', 'delete-tournament-archive', 'fetch-online-games', 'pick-engine-files', 'link-engine', 'unlink-engine', 'relink-engine', 'list-linked-engines', 'set-engine-protocol', 'inspect-openings'];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);
         }
@@ -83,7 +83,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
     },
     on: (channel, func) => {
-        let validChannels = ['board-update', 'engine-info', 'match-ended', 'match-log', 'match-started', 'match-error', 'tournament-update', 'tournament-finished', 'tournament-match-start', 'elo-update', 'analysis-update', 'analysis-error', 'puzzle-gen-progress', 'puzzle-gen-detected', 'puzzle-gen-finished', 'puzzle-gen-error', 'game-review-progress', 'game-review-finished', 'game-review-error', 'update-available', 'update-download-progress', 'update-downloaded', 'update-error', 'tournament-game', 'elo-game'];
+        let validChannels = ['board-update', 'engine-info', 'match-ended', 'match-log', 'match-started', 'match-error', 'tournament-update', 'tournament-finished', 'tournament-warning', 'tournament-match-start', 'elo-update', 'analysis-update', 'analysis-error', 'puzzle-gen-progress', 'puzzle-gen-detected', 'puzzle-gen-finished', 'puzzle-gen-error', 'game-review-progress', 'game-review-finished', 'game-review-error', 'update-available', 'update-download-progress', 'update-downloaded', 'update-error', 'tournament-game', 'elo-game'];
         if (validChannels.includes(channel)) {
             // Strip event as it includes sender
             const subscription = (event, ...args) => func(...args);

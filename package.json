@@ -1,6 +1,6 @@
 {
   "name": "coliseum",
-  "version": "3.7.1",
+  "version": "3.8.0",
   "description": "Modern Chess Engine Tournament Manager",
   "main": "electron/main.js",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on tcp:5173 && electron .\"",
-    "electron:build": "vite build && electron-builder"
+    "electron:build": "vite build && electron-builder",
+    "electron:build:linux": "vite build && electron-builder --linux"
   },
   "author": "Rinarto Gibson",
   "license": "MIT",
@@ -63,13 +64,6 @@
     ],
     "extraFiles": [
       {
-        "from": "Engines",
-        "to": "engines",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
         "from": "books",
         "to": "books",
         "filter": [
@@ -78,7 +72,41 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "extraFiles": [
+        {
+          "from": "Engines",
+          "to": "engines",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Game",
+      "icon": "build/linux",
+      "synopsis": "Chess engine tournaments, testing and training",
+      "description": "Coliseum runs chess engine tournaments, SPRT tests and Elo estimation, and lets you play and train against engines.",
+      "maintainer": "Rinarto Gibson",
+      "executableName": "coliseum",
+      "artifactName": "Coliseum-${version}-${arch}.${ext}",
+      "extraFiles": [
+        {
+          "from": "Engines-linux",
+          "to": "engines",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
+    },
+    "deb": {
+      "artifactName": "coliseum_${version}_${arch}.${ext}"
     }
   }
 }

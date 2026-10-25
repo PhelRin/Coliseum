@@ -3,6 +3,7 @@
 // the Tactics Trainer's move checker.
 
 const UciEngine = require('./uci');
+const { resolveProtocol } = require('./engine-protocol');
 
 class EngineEvaluator {
     constructor(label = 'Evaluator', configManager = null) {
@@ -21,6 +22,9 @@ class EngineEvaluator {
     async init(enginePath, { multiPV = 1 } = {}) {
         this.enginePath = enginePath;
         this.stopped = false;
+        if ((await resolveProtocol(enginePath)) === 'xboard') {
+            throw new Error('This is a WinBoard engine. WinBoard engines can play games and tournaments, but analysis needs a UCI engine.');
+        }
         const engine = new UciEngine(enginePath, this.label);
         engine.verbose = false;
         this.engine = engine;

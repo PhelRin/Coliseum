@@ -18,7 +18,9 @@ const crypto = require('crypto');
 const KEY = 'linkedEngines';
 const KEEP_VERSIONS = 4; // snapshots kept per engine (older ones are deleted)
 
-const isEngineFile = (p) => (process.platform === 'win32' ? /\.exe$/i.test(p) : true);
+const { looksLikeEngine, ENGINE_HINT } = require('./engine-files');
+
+const isEngineFile = (p) => looksLikeEngine(p);
 
 class LinkedEngines {
     constructor(store, cacheDir) {
@@ -53,7 +55,7 @@ class LinkedEngines {
     add(p) {
         const file = path.resolve(String(p || ''));
         if (!isFile(file)) return { success: false, error: 'That file does not exist.' };
-        if (!isEngineFile(file)) return { success: false, error: 'Choose the engine\'s .exe file.' };
+        if (!isEngineFile(file)) return { success: false, error: `Choose the engine itself (${ENGINE_HINT}).` };
         const list = this.entries();
         if (list.some((e) => samePath(e.path, file))) return { success: true, already: true, path: file };
         list.push({ path: file, addedAt: Date.now() });
@@ -71,7 +73,7 @@ class LinkedEngines {
     relink(oldPath, newPath, migrateKeys) {
         const file = path.resolve(String(newPath || ''));
         if (!isFile(file)) return { success: false, error: 'That file does not exist.' };
-        if (!isEngineFile(file)) return { success: false, error: 'Choose the engine\'s .exe file.' };
+        if (!isEngineFile(file)) return { success: false, error: `Choose the engine itself (${ENGINE_HINT}).` };
         const list = this.entries().filter((e) => !samePath(e.path, file));
         const entry = list.find((e) => samePath(e.path, oldPath));
         if (!entry) return { success: false, error: 'That engine is not linked.' };

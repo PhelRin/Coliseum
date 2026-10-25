@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { launchFile } = require('./linked-engines');
+const protocols = require('./engine-protocol');
+const { XboardEngine } = require('./xboard');
 
 class ConfigManager {
     constructor(userDataPath) {
@@ -34,6 +36,7 @@ class ConfigManager {
 
     // a linked engine moved: its saved options follow it
     renameEngine(oldPath, newPath) {
+        protocols.rename(oldPath, newPath);
         if (!this.options[oldPath]) return;
         this.options[newPath] = { ...this.options[oldPath], ...(this.options[newPath] || {}) };
         delete this.options[oldPath];
@@ -45,8 +48,30 @@ class ConfigManager {
         this.save();
     }
 
-    // Spawn engine to get available options
+    // Spawn engine to get available options (and say which protocol it speaks)
     async fetchEngineOptions(enginePath) {
+        const protocol = await protocols.resolveProtocol(enginePath);
+        const extra = { protocol, protocolMode: protocols.getInfo(enginePath).mode };
+        if (protocol === 'xboard') return { ...(await this.fetchXboardOptions(enginePath)), ...extra };
+        return { ...(await this.fetchUciOptions(enginePath)), ...extra };
+    }
+
+    async fetchXboardOptions(enginePath) {
+        const eng = new XboardEngine(enginePath, 'Options');
+        eng.verbose = false;
+        let failed = null;
+        eng.on('error', (e) => (failed = e));
+        eng.start();
+        const ok = await eng.waitForUciOk(17000);
+        const available = [...eng.options.values()].map(({ name, type, default: def, min, max, options }) => ({ name, type, default: def, min, max, options }));
+        const name = eng.name;
+        eng.quit();
+        if (failed) throw failed;
+        if (!ok) throw new Error('Engine timeout reading options');
+        return { available, saved: this.getSavedOptions(enginePath), engineName: name };
+    }
+
+    fetchUciOptions(enginePath) {
         return new Promise((resolve, reject) => {
             const engine = spawn(launchFile(enginePath), { cwd: path.dirname(enginePath) });
             let output = '';

@@ -7,6 +7,7 @@
 
 const { PolyglotBook } = require('./polyglot');
 const { openingFor } = require('./openings');
+const { OpeningSuite } = require('./opening-suite');
 const { sampleBookLine } = require('./tournament');
 
 const SPEEDS = { fast: 100, standard: 250, slow: 1000 };
@@ -49,9 +50,18 @@ class EloManager {
         this.config = {
             movetime: Math.max(20, Math.min(10000, movetime)),
             concurrency: Math.max(1, Math.min(16, parseInt(config.concurrency, 10) || 1)),
-            openings: config.openings && config.openings.mode === 'book' && config.openings.book ? config.openings : { mode: 'builtin' },
+            openings: config.openings && ((config.openings.mode === 'book' && config.openings.book) || (config.openings.mode === 'file' && config.openings.file)) ? config.openings : { mode: 'builtin' },
+            adjudication: config.adjudication || null,
         };
         this.book = null;
+        this.suite = null;
+        if (this.config.openings.mode === 'file') {
+            try {
+                this.suite = new OpeningSuite(this.config.openings.file, { order: this.config.openings.order, plies: this.config.openings.plies, seed: Date.now() });
+            } catch (e) {
+                this.log(`Opening file not used: ${e.message}`);
+            }
+        }
         if (this.config.openings.mode === 'book') {
             const b = new PolyglotBook();
             if (await b.load(this.config.openings.book)) this.book = b;
@@ -128,6 +138,7 @@ class EloManager {
     }
 
     nextOpening() {
+        if (this.suite) return this.suite.get(this.openingIndex++);
         if (this.book) return { moves: sampleBookLine(this.book) };
         return { fen: openingFor(this.openingIndex++, this.seed) };
     }
@@ -164,6 +175,7 @@ class EloManager {
                 startFen: opening.fen,
                 openingMoves: opening.moves && opening.moves.length ? opening.moves : undefined,
                 launchPaths: { w: this.pins[white.path], b: this.pins[black.path] },
+                adjudication: this.config.adjudication || undefined,
                 moveDelay: 20,
                 meta: { event: 'Coliseum Elo Estimation', round: `${this.session.games + 1}`, whiteElo: r[white.path].rating, blackElo: r[black.path].rating },
             });

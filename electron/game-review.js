@@ -260,7 +260,7 @@ class GameReviewer extends EventEmitter {
     loadBooks() {
         try {
             const dir = this.getBooksDir ? this.getBooksDir() : null;
-            if (dir && dir !== this.booksDir) {
+            if (dir && String(dir) !== String(this.booksDir)) {
                 const n = this.books.loadDirectory(dir);
                 this.booksDir = dir;
                 console.log(`[GameReview] Loaded ${n} opening book(s) from ${dir}`);

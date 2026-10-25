@@ -415,7 +415,7 @@ function App() {
                     <div className="pointer-events-none flex flex-col items-center justify-center">
                         <CircuitBoard className="w-24 h-24 text-primary mb-6 animate-bounce drop-shadow-[0_0_20px_rgba(74,222,128,0.5)]" />
                         <h2 className="text-4xl font-black text-white drop-shadow-xl tracking-tight">Drop an Engine or .bin Book</h2>
-                        <p className="text-primary font-bold mt-2 uppercase tracking-widest text-sm">Valid inputs: .exe, .bin, Directories</p>
+                        <p className="text-primary font-bold mt-2 uppercase tracking-widest text-sm">Engines, .bin books or folders</p>
                     </div>
                 </div>
             )}

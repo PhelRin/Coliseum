@@ -3,7 +3,7 @@ import { Activity, Play, Square, Check, Search, BookOpen, Cpu, Gauge, Anchor, Ar
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { LiveGameCard } from './live/LiveGameCard';
 import { useLiveGames, useNow } from './live/useLive';
-import { Section, Field, Stepper, Segmented } from './TournamentSetup';
+import { Section, Field, Stepper, Segmented, DEFAULT_ADJUDICATION } from './TournamentSetup';
 import { getRatingTier } from './EngineStatsModal';
 import { WDL } from './TournamentDashboard';
 
@@ -56,6 +56,7 @@ export function EloEstimationDashboard() {
     const [speed, setSpeed] = useState(saved.speed || 'standard');
     const [concurrency, setConcurrency] = useState(saved.concurrency || 1);
     const [book, setBook] = useState(saved.book || '');
+    const [adjudicate, setAdjudicate] = useState(saved.adjudicate !== false);
     const [books, setBooks] = useState([]);
     const [cpus, setCpus] = useState(null);
     const [anchorPath, setAnchorPath] = useState('');
@@ -97,7 +98,7 @@ export function EloEstimationDashboard() {
         return () => off && off();
     }, []);
 
-    useEffect(() => saveSetup({ selected, speed, concurrency, book }), [selected, speed, concurrency, book]);
+    useEffect(() => saveSetup({ selected, speed, concurrency, book, adjudicate }), [selected, speed, concurrency, book, adjudicate]);
 
     const nameOf = (e) => (career[e.path] && career[e.path].name) || e.name.replace(/\.exe$/i, '');
     const filtered = engines.filter((e) => !search || nameOf(e).toLowerCase().includes(search.toLowerCase()));
@@ -109,7 +110,14 @@ export function EloEstimationDashboard() {
         if (list.length < 2) return;
         setLogs([]);
         setChartSet(null);
-        window.electronAPI.startElo({ engines: list, speed, concurrency, openings: book ? { mode: 'book', book } : { mode: 'builtin' } });
+        const isFile = /\.(epd|pgn|fen)$/i.test(book || '');
+        window.electronAPI.startElo({
+            engines: list,
+            speed,
+            concurrency,
+            openings: !book ? { mode: 'builtin' } : isFile ? { mode: 'file', file: book, order: 'random' } : { mode: 'book', book },
+            adjudication: adjudicate ? DEFAULT_ADJUDICATION : null,
+        });
         setView('live');
     };
 
@@ -223,14 +231,22 @@ export function EloEstimationDashboard() {
                             if (e.target.value === '__browse') {
                                 const p = await window.electronAPI.dialogOpenFile({ filters: [{ name: 'Polyglot Book', extensions: ['bin'] }] });
                                 setBook(p || '');
+                            } else if (e.target.value === '__browse_file') {
+                                const p = await window.electronAPI.dialogOpenFile({ filters: [{ name: 'Opening files', extensions: ['epd', 'pgn', 'fen'] }] });
+                                setBook(p || '');
                             } else setBook(e.target.value);
                         }} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:border-primary outline-none">
                             <option value="">No book: balanced set of 50 openings</option>
                             {books.map((b) => <option key={b.path} value={b.path}>{b.name}</option>)}
                             {book && !books.some((b) => b.path === book) && <option value={book}>{book.split(/[\\/]/).pop()}</option>}
                             <option value="__browse">Browse for a .bin book…</option>
+                            <option value="__browse_file">Browse for an EPD / PGN opening file…</option>
                         </select>
                         <p className="text-xs text-muted-foreground mt-2">Each opening is played twice, once with each engine as White, so neither side gets lucky.</p>
+                        <label className="mt-3 flex items-start gap-2.5 text-xs text-muted-foreground cursor-pointer">
+                            <input type="checkbox" checked={adjudicate} onChange={(e) => setAdjudicate(e.target.checked)} className="mt-0.5 accent-[#4ade80]" />
+                            <span><span className="text-foreground font-semibold">Adjudicate decided games.</span> A game ends early when both engines agree it is won (by 7+ pawns for 4 moves) or dead drawn (within 0.1 pawns for 8 moves after move 40).</span>
+                        </label>
                     </Section>
 
                     <Section title="Rating anchor" icon={<Anchor size={16} className="text-primary" />} right={anchor ? <span className="text-[11px] text-primary">On</span> : <span className="text-[11px] text-muted-foreground">Optional</span>}>
@@ -318,7 +334,7 @@ function LiveView({ status, logs, live, now, chartSet, setChartSet, onBack }) {
                     </div>
                     <div>
                         <h2 className="font-bold text-lg text-foreground leading-tight">{status.active ? 'Estimating…' : 'Session finished'}</h2>
-                        <p className="text-xs text-muted-foreground">{engines.length} engines · {cfg.movetime} ms per move · {cfg.concurrency} at a time · {cfg.openings && cfg.openings.mode === 'book' ? 'opening book' : 'balanced openings'}</p>
+                        <p className="text-xs text-muted-foreground">{engines.length} engines · {cfg.movetime} ms per move · {cfg.concurrency} at a time · {cfg.openings && cfg.openings.mode === 'book' ? 'opening book' : cfg.openings && cfg.openings.mode === 'file' ? 'opening file' : 'balanced openings'}</p>
                     </div>
                 </div>
                 <div className="flex gap-3 flex-1 min-w-[220px]">

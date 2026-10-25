@@ -18,6 +18,7 @@ const { Career } = require('./career');
 const { TournamentArchive } = require('./tournament-archive');
 const { fetchOnlineGames } = require('./online-games');
 const { LinkedEngines, setLaunchResolver, samePath } = require('./linked-engines');
+const engineProtocols = require('./engine-protocol');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -31,16 +32,95 @@ let eloManager;
 let configManager;
 const career = new Career();
 
-// Locate the opening-books folder (shared by the tournament book picker and Game Review)
-function findBooksDir() {
+const { isEngineFile, looksLikeEngine, isWin, ENGINE_HINT } = require('./engine-files');
+
+// ---- Engine and book folders
+// Windows (and running from source): the "engines" / "books" folders next to the app, as always.
+// Linux packages (AppImage, .deb) are read-only, so engines and books you add go to the user data
+// folder (~/.config/coliseum), and the ones that come with Coliseum are read from the app itself.
+function bundledDir(name) {
+    const cap = name[0].toUpperCase() + name.slice(1);
     const pathsToCheck = [
-        path.join(process.cwd(), 'books'),
-        path.join(path.dirname(process.execPath), 'books'),
-        process.resourcesPath ? path.join(process.resourcesPath, 'books') : null,
-        path.join(__dirname, '..', 'books'),
-        path.join(__dirname, '..', 'Books')
+        path.join(process.cwd(), name),
+        path.join(path.dirname(process.execPath), name),
+        process.resourcesPath ? path.join(process.resourcesPath, name) : null,
+        path.join(__dirname, '..', name),
+        path.join(__dirname, '..', cap),
     ].filter(Boolean);
-    return pathsToCheck.find(p => fs.existsSync(p)) || null;
+    return pathsToCheck.find((p) => fs.existsSync(p)) || null;
+}
+
+function userDir(name) {
+    const separate = !isWin && app.isPackaged;
+    const dir = separate ? path.join(app.getPath('userData'), name) : bundledDir(name) || path.join(path.dirname(process.execPath), name);
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+    } catch (e) {
+        console.error(`Could not create the ${name} folder:`, e.message);
+    }
+    return dir;
+}
+
+function dirsFor(name) {
+    const out = [];
+    const dirs = !isWin && app.isPackaged ? [userDir(name)] : [userDir(name), bundledDir(name)];
+    for (const d of dirs) if (d && fs.existsSync(d) && !out.includes(d)) out.push(d);
+    return out;
+}
+
+// Linux packages: the engines and books that come with Coliseum are copied to the user data
+// folder, so they keep the same path from one start to the next (an AppImage is mounted at a
+// new place every time, and engines are known by their path: ratings, options, career).
+function installBundledFiles() {
+    if (isWin || !app.isPackaged) return;
+    // copied again after every update (a rebuilt engine can have the same size as the old one)
+    const marker = path.join(app.getPath('userData'), '.bundled-version');
+    let copied = null;
+    try {
+        copied = fs.readFileSync(marker, 'utf8').trim();
+    } catch (e) { /* first start */ }
+    const fresh = copied !== app.getVersion();
+    for (const name of ['engines', 'books']) {
+        // what came with the app sits next to its executable (never the current folder)
+        const from = [path.join(path.dirname(process.execPath), name), process.resourcesPath && path.join(process.resourcesPath, name)].find((d) => d && fs.existsSync(d));
+        if (!from) continue;
+        const to = userDir(name);
+        const copy = (src, dst) => {
+            for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+                const s = path.join(src, entry.name);
+                const d = path.join(dst, entry.name);
+                try {
+                    if (entry.isDirectory()) {
+                        fs.mkdirSync(d, { recursive: true });
+                        copy(s, d);
+                    } else if (entry.isFile()) {
+                        const st = fs.statSync(s);
+                        const have = fs.existsSync(d) ? fs.statSync(d) : null;
+                        if (!have || fresh || have.size !== st.size) {
+                            fs.copyFileSync(s, d);
+                            fs.chmodSync(d, st.mode | 0o200);
+                        }
+                    }
+                } catch (e) {
+                    console.error('[Setup] Could not copy', s, e.message);
+                }
+            }
+        };
+        try {
+            copy(from, to);
+        } catch (e) {
+            console.error(`[Setup] Could not copy the bundled ${name}:`, e.message);
+        }
+    }
+    try {
+        fs.writeFileSync(marker, app.getVersion());
+    } catch (e) { /* tried again next start */ }
+}
+
+// the opening-book folders (tournament book picker and Game Review)
+function findBooksDir() {
+    const dirs = dirsFor('books');
+    return dirs.length ? dirs : null;
 }
 
 const createWindow = () => {
@@ -80,6 +160,7 @@ const createWindow = () => {
 
     // Initialize Managers
     configManager = new ConfigManager(app.getPath('userData'));
+    engineProtocols.init(app.getPath('userData'));
 
     // Every arbiter (Quick Match, and each game slot of a tournament or an Elo estimation run)
     // records its finished games in the engines' career stats.
@@ -96,6 +177,7 @@ const createWindow = () => {
     // be rebuilt while Coliseum uses it. Tournaments and Elo runs pin their own snapshot.
     const linkedEngines = new LinkedEngines(null, path.join(app.getPath('userData'), 'linked-engines'));
     tournamentManager.linked = linkedEngines;
+    tournamentManager.dataDir = app.getPath('userData');
     eloManager.linked = linkedEngines;
     setLaunchResolver((p) => linkedEngines.snapshot(p));
 
@@ -157,7 +239,7 @@ const createWindow = () => {
                 const stat = fs.statSync(filePath);
                 if (stat.isDirectory()) {
                     scanDir(filePath, fileList, depth + 1);
-                } else if (file.toLowerCase().endsWith('.exe')) {
+                } else if (isEngineFile(filePath, stat)) {
                     fileList.push({
                         name: file, // Keep full name with extension for now to match previous behavior
                         path: filePath
@@ -171,39 +253,13 @@ const createWindow = () => {
     };
 
     ipcMain.handle('scan-engines', async () => {
-        console.log("Debug: process.execPath:", process.execPath);
-        console.log("Debug: process.cwd():", process.cwd());
-
-        const pathsToCheck = [
-            path.join(process.cwd(), 'engines'), // Try CWD first
-            path.join(path.dirname(process.execPath), 'engines'),
-            path.join(process.resourcesPath, 'engines'),
-            path.join(__dirname, '..', 'Engines')
-        ];
-
-        console.log("Debug: Scanning for engines...");
-        let enginesPath = pathsToCheck.find(p => {
-            const exists = fs.existsSync(p);
-            console.log(`Debug: Check ${p} -> ${exists}`);
-            return exists;
-        });
-
-        if (!enginesPath) {
-            console.log("Debug: No engines folder found. Creating 'engines' in root.");
-            enginesPath = path.join(path.dirname(process.execPath), 'engines');
-            try {
-                fs.mkdirSync(enginesPath, { recursive: true });
-            } catch (e) {
-                console.error("Debug: Failed to create dir:", e);
-                return [];
-            }
-        }
-
         let found = [];
-        try {
-            found = scanDir(enginesPath);
-        } catch (e) {
-            console.error("Debug: Scan failed:", e);
+        for (const dir of dirsFor('engines')) {
+            try {
+                for (const e of scanDir(dir)) if (!found.some((f) => samePath(f.path, e.path))) found.push(e);
+            } catch (e) {
+                console.error('Engine scan failed:', dir, e);
+            }
         }
         // linked engines that are still where they were linked from
         for (const e of linkedEngines.list()) {
@@ -236,12 +292,12 @@ const createWindow = () => {
                 .map((f) => path.join(srcPath, f))
                 .filter((f) => {
                     try {
-                        return fs.statSync(f).isFile() && (process.platform === 'win32' ? /\.exe$/i.test(f) : (fs.statSync(f).mode & 0o111) !== 0);
+                        return isEngineFile(f);
                     } catch (e) {
                         return false;
                     }
                 });
-            if (!files.length) return { success: false, error: 'No engine (.exe) found directly inside that folder.' };
+            if (!files.length) return { success: false, error: `No engine (${ENGINE_HINT}) found directly inside that folder.` };
             files.forEach((f) => linkedEngines.add(f));
             return { success: true, linked: files };
         } catch (e) {
@@ -256,65 +312,30 @@ const createWindow = () => {
     ipcMain.handle('list-linked-engines', () => linkedEngines.list());
 
     ipcMain.handle('scan-books', () => {
-        let booksPath = findBooksDir();
-        if (!booksPath) {
-            booksPath = path.join(path.dirname(process.execPath), 'books');
+        const fileList = [];
+        for (const dir of dirsFor('books')) {
             try {
-                fs.mkdirSync(booksPath, { recursive: true });
+                for (const file of fs.readdirSync(dir)) {
+                    if (file.toLowerCase().endsWith('.bin') && !fileList.some((b) => b.name === file)) fileList.push({ name: file, path: path.join(dir, file) });
+                }
             } catch (e) {
-                console.error("Failed to create books dir:", e);
-                return [];
+                console.error('Book scan failed:', dir, e);
             }
         }
-
-        const fileList = [];
-        const files = fs.readdirSync(booksPath);
-        files.forEach(file => {
-            if (file.toLowerCase().endsWith('.bin')) {
-                fileList.push({
-                    name: file,
-                    path: path.join(booksPath, file)
-                });
-            }
-        });
         return fileList;
     });
 
     ipcMain.handle('open-engines-folder', () => {
-        const pathsToCheck = [
-            path.join(process.cwd(), 'engines'),
-            path.join(path.dirname(process.execPath), 'engines'),
-            path.join(process.resourcesPath, 'engines'),
-            path.join(__dirname, '..', 'Engines')
-        ];
-        let enginesPath = pathsToCheck.find(p => fs.existsSync(p));
-
-        if (!enginesPath) {
-            enginesPath = path.join(path.dirname(process.execPath), 'engines');
-            fs.mkdirSync(enginesPath, { recursive: true });
-        }
-        shell.openPath(enginesPath);
+        shell.openPath(userDir('engines'));
     });
 
     ipcMain.handle('install-engine', async (_, srcPath) => {
         try {
             const stat = fs.statSync(srcPath);
-            if (!stat.isDirectory() && !srcPath.toLowerCase().endsWith('.exe')) {
-                return { success: false, error: 'Only .exe files or folders are supported for engine installation.' };
+            if (!stat.isDirectory() && !looksLikeEngine(srcPath)) {
+                return { success: false, error: `Only engines (${ENGINE_HINT}) or folders can be installed.` };
             }
-
-            const pathsToCheck = [
-                path.join(process.cwd(), 'engines'),
-                path.join(path.dirname(process.execPath), 'engines'),
-                path.join(process.resourcesPath, 'engines'),
-                path.join(__dirname, '..', 'Engines')
-            ];
-            let enginesPath = pathsToCheck.find(p => fs.existsSync(p));
-
-            if (!enginesPath) {
-                enginesPath = path.join(path.dirname(process.execPath), 'engines');
-                fs.mkdirSync(enginesPath, { recursive: true });
-            }
+            const enginesPath = userDir('engines');
 
             const fileName = path.basename(srcPath);
             const destPath = path.join(enginesPath, fileName);
@@ -340,18 +361,7 @@ const createWindow = () => {
                 return { success: false, error: 'Only .bin Polyglot books are supported.' };
             }
 
-            const pathsToCheck = [
-                path.join(process.cwd(), 'books'),
-                path.join(path.dirname(process.execPath), 'books'),
-                path.join(process.resourcesPath, 'books'),
-                path.join(__dirname, '..', 'Books')
-            ];
-            let booksPath = pathsToCheck.find(p => fs.existsSync(p));
-
-            if (!booksPath) {
-                booksPath = path.join(path.dirname(process.execPath), 'books');
-                fs.mkdirSync(booksPath, { recursive: true });
-            }
+            const booksPath = userDir('books');
 
             const fileName = path.basename(srcPath);
             const destPath = path.join(booksPath, fileName);
@@ -427,6 +437,12 @@ const createWindow = () => {
     ipcMain.handle('get-engine-options', async (_, enginePath) => {
         return await configManager.fetchEngineOptions(enginePath);
     });
+
+    // EPD / PGN opening files: how many openings, and the first one, for the setup screens
+    ipcMain.handle('inspect-openings', (_, { file, plies } = {}) => require('./opening-suite').inspect(file, { plies }));
+
+    // UCI / WinBoard: 'auto' (ask the engine), 'uci' or 'xboard'
+    ipcMain.handle('set-engine-protocol', (_, { path: enginePath, mode } = {}) => engineProtocols.setMode(enginePath, mode));
 
     ipcMain.handle('save-engine-options', async (_, { path, options }) => {
         configManager.updateOptions(path, options);
@@ -737,7 +753,10 @@ function initAutoUpdater() {
     });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    installBundledFiles();
+    createWindow();
+});
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
