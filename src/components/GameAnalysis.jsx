@@ -723,8 +723,8 @@ export function GameAnalysis({ initialPgn, autoAnalyze = false }) {
             <div className="min-w-0 flex flex-col justify-center items-center relative min-h-[360px] md:h-[calc(100vh-150px)] xl:h-auto xl:min-h-0">
                 {pgnHeaders && Object.keys(pgnHeaders).length > 0 && (
                     <div className="w-full max-w-[650px] bg-card border border-white/5 rounded-xl p-4 mb-4 flex justify-between items-center gap-3 shadow-lg transition-all">
-                        <div className="flex flex-col gap-1">
-                            <span className="text-white font-bold text-lg flex items-center gap-2">
+                        <div className="flex flex-col gap-1 min-w-0">
+                            <span className="text-white font-bold text-lg flex flex-wrap items-center gap-x-2">
                                 {pgnHeaders.White || 'White'} {pgnHeaders.WhiteElo ? <span className="text-muted-foreground font-normal text-sm">({pgnHeaders.WhiteElo})</span> : ''}
                                 <span className="text-primary/50 font-normal mx-2 text-sm italic">vs</span>
                                 {pgnHeaders.Black || 'Black'} {pgnHeaders.BlackElo ? <span className="text-muted-foreground font-normal text-sm">({pgnHeaders.BlackElo})</span> : ''}
@@ -735,7 +735,7 @@ export function GameAnalysis({ initialPgn, autoAnalyze = false }) {
                             </span>
                         </div>
                         {pgnHeaders.Result && pgnHeaders.Result !== '*' && (
-                            <div className="text-sm font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg shadow-[0_0_10px_rgba(74,222,128,0.1)]">
+                            <div className="text-sm font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg shadow-[0_0_10px_rgba(74,222,128,0.1)] whitespace-nowrap shrink-0">
                                 {pgnHeaders.Result}
                             </div>
                         )}

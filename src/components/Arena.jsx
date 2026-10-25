@@ -53,7 +53,7 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
                 const newClocks = { ...prev };
                 // Decrease active turn by 100ms
                 if (newClocks[turn] !== -1 && newClocks[turn] > 0) {
-                    newClocks[turn] -= 100;
+                    newClocks[turn] = Math.max(0, newClocks[turn] - 100);
                 }
                 return newClocks;
             });

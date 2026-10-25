@@ -801,7 +801,7 @@ export default function Training({ onAnalyzePosition }) {
     };
 
     return (
-        <div className="flex flex-col h-full overflow-hidden p-4 select-none">
+        <div className="flex flex-col lg:h-full lg:overflow-hidden p-2 lg:p-4 select-none">
             {/* Header / Sub Tabs */}
             <div className="flex justify-between items-center mb-6 shrink-0 bg-card border border-white/5 rounded-2xl p-4 shadow-lg">
                 <div className="flex items-center gap-3">
@@ -1101,7 +1101,7 @@ export default function Training({ onAnalyzePosition }) {
                     </div>
 
                     {/* RIGHT PANEL: LIVE SCAN RESULTS & PROGRESS */}
-                    <div className="flex-1 bg-card border border-white/5 rounded-2xl p-5 flex flex-col min-h-0">
+                    <div className="flex-1 bg-card border border-white/5 rounded-2xl p-5 flex flex-col min-h-[640px] lg:min-h-0">
                         {/* Live progress header */}
                         {isScanning && scanProgress && (
                             <div className="bg-black/40 border border-white/5 rounded-xl p-4 mb-4 animate-fade-in shrink-0">

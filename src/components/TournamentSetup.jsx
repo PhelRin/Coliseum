@@ -463,7 +463,7 @@ export function TournamentSetup({ onStart }) {
                     <Section title="Games at once" icon={<Cpu size={16} className="text-primary" />}>
                         <Stepper value={concurrency} setValue={setConcurrency} min={1} max={cpus ? Math.max(1, Math.min(16, cpus)) : 8} />
                         <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                            Each game runs two engines. {cpus ? `Your PC has ${cpus} CPU threads, so up to about ${threadsHint} games at once is comfortable` : 'Keep this at or below half your CPU threads'}, if each engine uses 1 thread.
+                            Each game runs two engines. {cpus ? `Your PC has ${cpus} CPU threads, so up to about ${threadsHint} game${threadsHint === 1 ? "" : "s"} at once is comfortable` : 'Keep this at or below half your CPU threads'}, if each engine uses 1 thread.
                         </p>
                     </Section>
 

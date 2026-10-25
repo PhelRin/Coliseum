@@ -188,7 +188,7 @@ export function TournamentDashboard({ onExit }) {
 
             {/* live games: the featured board, the others beside it */}
             {!isOver && (
-                <div className="flex flex-col md:flex-row gap-4 items-start">
+                <div className="flex flex-col md:[@media(min-aspect-ratio:1/1)]:flex-row gap-4 items-start">
                     <div className="h-[clamp(340px,calc(100vh-230px),780px)] aspect-[0.87] max-w-full shrink-0">
                         {featured ? (
                             <LiveGameCard game={featured} now={now} big label={labelFor(featured)} />
@@ -198,7 +198,7 @@ export function TournamentDashboard({ onExit }) {
                     </div>
                     <div className="flex-1 min-w-0 w-full space-y-4">
                         {others.length > 0 && (
-                            <div className="grid grid-cols-2 2xl:grid-cols-3 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:[@media(min-aspect-ratio:1/1)]:grid-cols-2 2xl:grid-cols-3 gap-3">
                                 {others.map((b) => (
                                     <LiveGameCard key={b.slot} game={b} now={now} onClick={() => setFeaturedSlot(b.slot)} label={labelFor(b)} />
                                 ))}
