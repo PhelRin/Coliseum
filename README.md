@@ -55,3 +55,19 @@ Simple sound effects for moves, captures, check, and game end.
 You may also find the Coliseum folder in your AppData.
 
 Coliseum checks for updates by itself. When a new version is out it downloads in the background, and you can install it with one click when it's ready.
+
+## Building from source
+
+You need [Node.js](https://nodejs.org/) 18 or newer.
+
+```bash
+npm install
+npm run electron:dev     # run the app in development mode
+npm run electron:build   # build the Windows installer into release/
+```
+
+Engines and opening books are not part of this repository. Add your own UCI engines from inside the app; to bundle some with the installer, put them in an `Engines` folder and Polyglot books in a `books` folder before building.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

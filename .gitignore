@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+# engines and opening books are third-party files with their own licences; keep them out of the repo
+engines/
+Engines/
+books/
+scratch/
+*.log
+.DS_Store
+Thumbs.db

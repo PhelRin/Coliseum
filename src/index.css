@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 2%;
+    /* #050505 - Deep Black */
+    --foreground: 140 20% 95%;
+    /* #eefbf3 - Off-white with faint green tint */
+
+    --card: 0 0% 7%;
+    /* #121212 - Soft Black Card */
+    --card-foreground: 140 20% 95%;
+
+    --popover: 0 0% 7%;
+    --popover-foreground: 140 20% 95%;
+
+    --primary: 142 71% 58%;
+    /* #4ade80 - Neon Green */
+    --primary-foreground: 0 0% 5%;
+    /* Black text on green */
+
+    --secondary: 0 0% 12%;
+    /* #1f1f1f - Dark Grey Secondary */
+    --secondary-foreground: 140 20% 95%;
+
+    --muted: 0 0% 12%;
+    --muted-foreground: 140 10% 60%;
+
+    --accent: 0 0% 15%;
+    /* Lighter grey for hover */
+    --accent-foreground: 142 71% 58%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 142 71% 58%;
+
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/30;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Scrollbar Styling for WebKit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-white/10 rounded-full hover:bg-primary/50 transition-colors;
+}
+
+/* Animations */
+.animate-in {
+  animation: animateIn 0.3s ease-in-out;
+}
+
+@keyframes animateIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* thin scrollbar for the sidebar's nav */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
