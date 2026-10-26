@@ -646,7 +646,7 @@ class TournamentManager extends EventEmitter {
 
         if (!result && this.state.config.type === 'sprt') {
             // an SPRT must only count real games: stop the test (it can be resumed) instead
-            this.state.warning = `${white.name} or ${black.name} could not be started, so the SPRT was paused. Check the engines in Local Engines, then resume the test from the lobby.`;
+            this.state.warning = `${white.name} or ${black.name} could not be started, so the SPRT was paused. Check the engines in Engines & Books, then resume the test from the lobby.`;
             this.send('tournament-warning', this.state.warning);
             game.status = 'pending';
             game.slot = null;

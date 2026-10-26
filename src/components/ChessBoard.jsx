@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Chess } from 'chess.js';
 import { PieceIcon } from './PieceIcons';
+import { useAppearance, BOARDS } from '../appearance';
 import { getClassification } from '../utils/classifications';
 import { TrendingUp, Check, AlertCircle, XCircle, ThumbsUp } from 'lucide-react';
 
@@ -58,14 +59,14 @@ const Arrow = ({ from, to, color, orientation }) => {
                 y1={start.y}
                 x2={baseX}
                 y2={baseY}
-                stroke={color}
+                style={{ stroke: color }}
                 strokeWidth="1.8"
                 strokeLinecap="round"
             />
             {/* Arrow head */}
             <polygon
                 points={`${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}`}
-                fill={color}
+                style={{ fill: color }}
             />
         </g>
     );
@@ -73,6 +74,8 @@ const Arrow = ({ from, to, color, orientation }) => {
 
 export function ChessBoard({ fen, lastMove, lastMoveClassification, size = '650px', orientation = 'white', onPieceDrop, onSquareClick, interactive = false, allowDrag = false, arrows = [], thinFrame = false }) {
     const [selectedSquare, setSelectedSquare] = useState(null);
+    const { board: boardId } = useAppearance();
+    const boardTheme = BOARDS[boardId] || BOARDS.travertine;
     const [customArrows, setCustomArrows] = useState([]);
     const [highlightedSquares, setHighlightedSquares] = useState([]);
     const [rightClickStart, setRightClickStart] = useState(null);
@@ -351,16 +354,16 @@ export function ChessBoard({ fen, lastMove, lastMoveClassification, size = '650p
                             }}
                             onMouseDown={(e) => handleMouseDown(e, square)}
                             onMouseUp={(e) => handleMouseUp(e, square)}
+                            style={{ backgroundColor: isDark ? boardTheme.dark : boardTheme.light }}
                             className={`
                                 flex items-center justify-center relative
-                                ${isDark ? 'bg-[#27272a]' : 'bg-[#14532d]'} 
                                 ${isLastMove ? 'after:absolute after:inset-0 after:bg-primary/20 after:animate-pulse after:border-2 after:border-primary' : ''}
                                 ${selectedSquare === square ? 'after:absolute after:inset-0 after:bg-yellow-400/40 after:border-2 after:border-yellow-400 z-10' : ''}
                             `}
                         >
                             {/* Coordinates - adjusted for orientation visually */}
-                            {fIdx === 0 && isDark === false && <span className="absolute top-0.5 left-0.5 text-[8px] text-zinc-500 font-mono">{8 - rankIdx}</span>}
-                            {rIdx === 7 && isDark === true && <span className="absolute bottom-0 right-0.5 text-[8px] text-zinc-500 font-mono">{String.fromCharCode(97 + fileIdx)}</span>}
+                            {fIdx === 0 && <span className="absolute top-0.5 left-0.5 text-[8px] font-mono font-semibold" style={{ color: isDark ? boardTheme.coordDark : boardTheme.coordLight }}>{8 - rankIdx}</span>}
+                            {rIdx === 7 && <span className="absolute bottom-0 right-0.5 text-[8px] font-mono font-semibold" style={{ color: isDark ? boardTheme.coordDark : boardTheme.coordLight }}>{String.fromCharCode(97 + fileIdx)}</span>}
 
                             {/* Classification Icon at top-right of the target square */}
                             {isTargetSquare && lastMoveClassification && (

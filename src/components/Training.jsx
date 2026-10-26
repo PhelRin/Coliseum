@@ -767,7 +767,7 @@ export default function Training({ onAnalyzePosition }) {
         return [{
             from: currentExpectedUci.substring(0, 2),
             to: currentExpectedUci.substring(2, 4),
-            color: 'rgba(74, 222, 128, 0.85)' // green hint arrow
+            color: 'hsl(var(--primary) / 0.85)' // green hint arrow
         }];
     };
 
@@ -1061,7 +1061,7 @@ export default function Training({ onAnalyzePosition }) {
                                 </div>
                                 <div className="w-full bg-white/5 rounded-full h-2.5 overflow-hidden border border-white/5">
                                     <div 
-                                        className="bg-primary h-full rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(74,222,128,0.5)]" 
+                                        className="bg-primary h-full rounded-full transition-all duration-300 shadow-[0_0_8px_hsl(var(--primary)/0.5)]" 
                                         style={{ width: `${scanProgress.percent}%` }}
                                     />
                                 </div>
@@ -1405,7 +1405,7 @@ export default function Training({ onAnalyzePosition }) {
                                         
                                         <div className={`px-3 py-2 rounded-lg text-xs font-black shrink-0 border ${
                                             solveStatus === 'solved' 
-                                                ? 'bg-green-500/25 border-green-400/40 text-green-400 shadow-[0_0_10px_rgba(74,222,128,0.15)] animate-pulse font-extrabold'
+                                                ? 'bg-green-500/25 border-green-400/40 text-green-400 shadow-[0_0_10px_hsl(var(--primary)/0.15)] animate-pulse font-extrabold'
                                                 : solveStatus === 'wrong'
                                                     ? 'bg-red-500/25 border-red-400/40 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.15)] font-bold'
                                                     : 'bg-primary/10 border-primary/20 text-primary font-bold'
@@ -1585,7 +1585,7 @@ export default function Training({ onAnalyzePosition }) {
  
                                         <button
                                             onClick={() => onAnalyzePosition && onAnalyzePosition(selectedPuzzle.fen, true)}
-                                            className="w-full py-2.5 bg-gradient-to-r from-primary to-green-600 hover:from-primary hover:to-green-500 text-black font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-[0_0_10px_rgba(74,222,128,0.2)] hover:scale-[1.02] cursor-pointer"
+                                            className="w-full py-2.5 bg-gradient-to-r from-primary to-primary2 hover:from-primary hover:to-primary2 text-black font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-[0_0_10px_hsl(var(--primary)/0.2)] hover:scale-[1.02] cursor-pointer"
                                         >
                                             <Sparkles size={14} />
                                             <span>Analyze Position</span>

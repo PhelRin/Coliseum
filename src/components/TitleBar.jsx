@@ -18,7 +18,7 @@ export function TitleBar() {
         <div className="h-8 bg-black/50 w-full flex items-center justify-between px-2 select-none z-[100] border-b border-white/5 backdrop-blur-md app-drag-region shrink-0 fixed top-0 left-0 right-0">
             {/* Drag Region */}
             <div className="flex items-center gap-2 pl-2">
-                <div className="w-3 h-3 rounded-full bg-primary/50 shadow-[0_0_5px_rgba(74,222,128,0.2)]" />
+                <div className="w-3 h-3 rounded-full bg-primary/50 shadow-[0_0_5px_hsl(var(--primary)/0.2)]" />
                 <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">Coliseum</span>
             </div>
 

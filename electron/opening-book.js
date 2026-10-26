@@ -139,4 +139,4 @@ class OpeningBookSet {
     }
 }
 
-module.exports = { OpeningBookSet, polyglotKey };
+module.exports = { OpeningBookSet, PolyglotFile, polyglotKey };

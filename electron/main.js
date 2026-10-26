@@ -355,6 +355,69 @@ const createWindow = () => {
         }
     });
 
+    // ---- Opening books manager
+    const isInBooksDir = (p) => dirsFor('books').some((d) => {
+        const rel = path.relative(d, path.resolve(String(p || '')));
+        return rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+    });
+    const bookMoves = (file, fen) => {
+        const { PolyglotFile } = require('./opening-book');
+        const { Chess } = require('chess.js');
+        const book = new PolyglotFile(file);
+        const entries = book.lookup(fen);
+        const total = entries.reduce((a, e) => a + e.weight, 0) || 1;
+        const board = new Chess(fen);
+        const merged = new Map();
+        for (const e of entries) {
+            const m = merged.get(e.uci) || { uci: e.uci, weight: 0 };
+            m.weight += e.weight;
+            merged.set(e.uci, m);
+        }
+        return {
+            count: book.count,
+            moves: [...merged.values()]
+                .map((m) => {
+                    let san = m.uci;
+                    try {
+                        const r = new Chess(board.fen()).move({ from: m.uci.slice(0, 2), to: m.uci.slice(2, 4), promotion: m.uci[4] });
+                        if (r) san = r.san;
+                    } catch (e) { /* not legal here (a broken book entry) */ }
+                    return { ...m, san, pct: (m.weight / total) * 100 };
+                })
+                .sort((a, b) => b.weight - a.weight),
+        };
+    };
+    ipcMain.handle('book-info', (_, { path: file, fen } = {}) => {
+        try {
+            const st = fs.statSync(file);
+            const { Chess } = require('chess.js');
+            const r = bookMoves(file, fen || new Chess().fen());
+            return { ok: true, size: st.size, modified: st.mtimeMs, entries: r.count, moves: r.moves, removable: isInBooksDir(file) };
+        } catch (e) {
+            return { ok: false, error: e.message };
+        }
+    });
+    ipcMain.handle('remove-book', (_, file) => {
+        // only books in Coliseum's own books folders can be deleted from the app
+        if (!isInBooksDir(file) || !String(file).toLowerCase().endsWith('.bin')) return { success: false, error: 'That book is not in the books folder.' };
+        try {
+            fs.rmSync(file);
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+    ipcMain.handle('open-books-folder', () => shell.openPath(userDir('books')));
+    ipcMain.handle('pick-book-files', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+            title: 'Add opening books',
+            buttonLabel: 'Add',
+            properties: ['openFile', 'multiSelections'],
+            filters: [{ name: 'Polyglot books', extensions: ['bin'] }],
+        });
+        return canceled ? [] : filePaths;
+    });
+
     ipcMain.handle('install-book', async (_, srcPath) => {
         try {
             if (!srcPath.toLowerCase().endsWith('.bin')) {

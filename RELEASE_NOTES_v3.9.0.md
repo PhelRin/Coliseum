@@ -1,6 +1,24 @@
-## Coliseum v3.8.0
+## Coliseum v3.9.0
 
-Coliseum is now a proper engine-testing tool: SPRT tests, adjudication, fixed depth and node limits, opening suites from EPD and PGN files, WinBoard engines, and a Linux version.
+Coliseum is now a proper engine-testing tool: SPRT tests, adjudication, fixed depth and node limits, opening suites from EPD and PGN files, WinBoard engines, and a Linux version. It also has a new look, an opening book manager, and a sidebar you can arrange yourself.
+
+### New look: the Coliseum theme
+- **Roman colours:** Coliseum now looks like its namesake, with warm travertine stone, bronze and dark stone. The original neon green is still there as the **Matrix** theme.
+- **Easier to read:** the new default board is light and dark stone with classic white and black pieces, which are told apart by brightness rather than red and green, so they're easy to read if you're colour-blind.
+- **Your choice:** in Settings, pick a theme, one of five boards (Travertine, Marble, Wood, Slate blue, Matrix) and a piece set (Classic, Ivory & bronze, Matrix red). The preview updates as you choose.
+
+### New: opening book manager
+- **Where:** Local Engines is now **Engines & Books**, with a tab for your Polyglot opening books.
+- **At a glance:** each book shows its size, how many positions it has and its favourite first moves.
+- **Manage them:** add books with a button (or by dropping a .bin file), open the books folder, or delete a book you don't need.
+- **Explore a book:** click any book to walk through it move by move on a board, with how often the book plays each move.
+
+### New: customise the sidebar
+- **Your order:** click **Customize** at the bottom of the tab list and drag the tabs into the order you like.
+- **Hide tabs:** hide the ones you don't use with the eye button; **Reset** brings the original layout back.
+
+### Smaller changes
+- **Installer name:** the Windows installer is now built as `Coliseum-Setup-<version>.exe`, which matches the update file without renaming.
 
 ### New: SPRT testing
 Find out whether a new build of your engine is really stronger, the way Fishtest and OpenBench do it.

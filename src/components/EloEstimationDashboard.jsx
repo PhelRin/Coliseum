@@ -174,7 +174,7 @@ export function EloEstimationDashboard() {
                         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search engines…" className="w-full bg-black/30 border border-white/10 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:border-primary outline-none" />
                     </div>
                     {engines.length === 0 ? (
-                        <p className="text-sm text-muted-foreground p-6 text-center border border-dashed border-white/10 rounded-xl">No engines found. Add some in Local Engines.</p>
+                        <p className="text-sm text-muted-foreground p-6 text-center border border-dashed border-white/10 rounded-xl">No engines found. Add some in Engines &amp; Books.</p>
                     ) : (
                         <div className="divide-y divide-white/5 border border-white/5 rounded-xl overflow-hidden">
                             {[...filtered]
@@ -244,7 +244,7 @@ export function EloEstimationDashboard() {
                         </select>
                         <p className="text-xs text-muted-foreground mt-2">Each opening is played twice, once with each engine as White, so neither side gets lucky.</p>
                         <label className="mt-3 flex items-start gap-2.5 text-xs text-muted-foreground cursor-pointer">
-                            <input type="checkbox" checked={adjudicate} onChange={(e) => setAdjudicate(e.target.checked)} className="mt-0.5 accent-[#4ade80]" />
+                            <input type="checkbox" checked={adjudicate} onChange={(e) => setAdjudicate(e.target.checked)} className="mt-0.5 accent-primary" />
                             <span><span className="text-foreground font-semibold">Adjudicate decided games.</span> A game ends early when both engines agree it is won (by 7+ pawns for 4 moves) or dead drawn (within 0.1 pawns for 8 moves after move 40).</span>
                         </label>
                     </Section>

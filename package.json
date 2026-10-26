@@ -1,6 +1,6 @@
 {
   "name": "coliseum",
-  "version": "3.8.0",
+  "version": "3.9.0",
   "description": "Modern Chess Engine Tournament Manager",
   "main": "electron/main.js",
   "scripts": {
@@ -107,6 +107,9 @@
     },
     "deb": {
       "artifactName": "coliseum_${version}_${arch}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     }
   }
 }

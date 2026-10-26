@@ -360,7 +360,7 @@ export function TournamentSetup({ onStart }) {
                                     <button
                                         key={key}
                                         onClick={() => setFormat(key)}
-                                        className={`text-left p-4 rounded-xl border transition-all flex gap-3 ${format === key ? 'bg-primary/10 border-primary/40 shadow-[0_0_15px_rgba(74,222,128,0.08)]' : 'bg-black/20 border-white/5 hover:bg-white/5'}`}
+                                        className={`text-left p-4 rounded-xl border transition-all flex gap-3 ${format === key ? 'bg-primary/10 border-primary/40 shadow-[0_0_15px_hsl(var(--primary)/0.08)]' : 'bg-black/20 border-white/5 hover:bg-white/5'}`}
                                     >
                                         <Icon size={20} className={format === key ? 'text-primary shrink-0 mt-0.5' : 'text-muted-foreground shrink-0 mt-0.5'} />
                                         <span className="min-w-0">
@@ -490,7 +490,7 @@ export function TournamentSetup({ onStart }) {
                             />
                         </div>
                         {engines.length === 0 ? (
-                            <p className="text-sm text-muted-foreground p-6 text-center border border-dashed border-white/10 rounded-xl">No engines found. Add some in Local Engines.</p>
+                            <p className="text-sm text-muted-foreground p-6 text-center border border-dashed border-white/10 rounded-xl">No engines found. Add some in Engines &amp; Books.</p>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
                                 {filtered.map((e) => {

@@ -220,7 +220,7 @@ export function Arena({ matchParams, onBack = () => { }, shouldStart = true, isT
         arrows.push({
             from: whiteBest.substring(0, 2),
             to: whiteBest.substring(2, 4),
-            color: '#4ade80' // primary green
+            color: 'hsl(var(--primary))' // primary green
         });
     }
 

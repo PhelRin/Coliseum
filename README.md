@@ -24,6 +24,8 @@ Games can use a clock (bullet, blitz, rapid or your own), a fixed time per move,
 ### SPRT Testing
 Set the hypotheses (Elo0 and Elo1, with presets like gain [0, 5] and no regression [-5, 0]) and the error rates alpha and beta. Coliseum counts game pairs as a pentanomial and shows the log-likelihood ratio between its bounds, the Elo difference with a 95% range, the likelihood of superiority and W/D/L as the test runs. It stops as soon as one hypothesis is accepted, or at a game limit you set.
 
+![An SPRT test between two AggroChess versions](docs/screenshots/sprt.png)
+
 ### Results You Can Read
 Gauntlets show the main engine's score, its Elo difference against each opponent with an error margin, and a performance rating. Round robins and Swiss events get standings with tiebreaks, and knockouts get a live bracket.
 
@@ -44,6 +46,11 @@ Play against AggroChess, an aggressive engine in the spirit of Mikhail Tal that 
 
 ### Quick Match
 Play a single game between two engines, or between you and an engine with full control over each side's time and opening book. Finished games are saved to the Archive, where you can search them and export PGNs.
+
+### Opening Books
+The **Engines & Books** page has a tab for your Polyglot (.bin) opening books. Each one shows its size, its number of positions and its favourite first moves. You can add books with a button or by dropping them on the window, delete the ones you don't need, and explore any book move by move on a board.
+
+![Exploring an opening book](docs/screenshots/books.png)
 
 ### Engine Management (UCI and WinBoard)
 Coliseum works out by itself whether an engine speaks UCI or WinBoard (xboard), and you can also set it by hand. WinBoard engines play in tournaments, SPRT tests, Elo estimation and games; analysis, Game Review and the Tactics Trainer use UCI engines. Import any engine by dropping it into the app, or link it by path so Coliseum uses it from its own folder (handy for engine developers: rebuild any time, and Coliseum runs the newest build). Tweak its options and save custom configurations. Coliseum keeps a career record for every engine: wins, draws, losses, results as White and Black, and its rating over time.
@@ -67,6 +74,11 @@ Turn games into puzzles: forced checkmates, blunder refutations and missed tacti
 
 ### Twitch Watch Party
 Connect your Twitch channel and run a non-stop "Winner Stays On" engine tournament for your stream.
+
+### Make It Yours
+Pick a theme in Settings: **Coliseum** (travertine stone and bronze, the default) or **Matrix** (the original neon green). Choose a board and a piece set too; the default board and pieces are told apart by light and dark rather than red and green, so they are easy to read with colour blindness. Click **Customize** under the sidebar tabs to drag them into your own order and hide the ones you don't use.
+
+![Appearance settings](docs/screenshots/settings.png)
 
 ### Audio Feedback
 Simple sound effects for moves, captures, check, and game end.

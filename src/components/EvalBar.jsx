@@ -1,6 +1,10 @@
 import React from 'react';
+import { useAppearance } from '../appearance';
 
 export function EvalBar({ score: infoObj, color, turn = 'w', orientation = 'white' }) {
+    // Black's side matches the pieces: red for the Matrix set, dark stone otherwise
+    const { pieces } = useAppearance();
+    const blackBg = pieces === 'matrix' ? 'bg-red-500' : 'bg-[#2b2520]';
     let finalTurn = turn;
     let finalOrientation = orientation;
 
@@ -41,8 +45,8 @@ export function EvalBar({ score: infoObj, color, turn = 'w', orientation = 'whit
     // Dynamically flip background colors
     // White at bottom: bar is White (zinc), top is Red.
     // Black at bottom: bar is Red, top is White (zinc).
-    const containerBg = finalOrientation === 'white' ? 'bg-red-500' : 'bg-zinc-200';
-    const barColor = finalOrientation === 'white' ? 'bg-zinc-200' : 'bg-red-500';
+    const containerBg = finalOrientation === 'white' ? blackBg : 'bg-zinc-200';
+    const barColor = finalOrientation === 'white' ? 'bg-zinc-200' : blackBg;
 
     // Label styling & placement (contrast)
     const isLabelAtBottom = percent > 50;

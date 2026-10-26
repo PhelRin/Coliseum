@@ -188,7 +188,7 @@ export function EngineConfigModal({ engine, onClose }) {
                     <button
                         onClick={handleSave}
                         disabled={loading}
-                        className="px-6 py-2.5 bg-primary text-black font-bold rounded-xl hover:brightness-110 active:scale-[0.99] transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(74,222,128,0.2)] disabled:opacity-50"
+                        className="px-6 py-2.5 bg-primary text-black font-bold rounded-xl hover:brightness-110 active:scale-[0.99] transition-all flex items-center gap-2 shadow-[0_0_15px_hsl(var(--primary)/0.2)] disabled:opacity-50"
                     >
                         <Save size={18} />
                         Save Configuration

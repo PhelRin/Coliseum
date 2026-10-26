@@ -2,6 +2,9 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
+import { initAppearance } from './appearance'
+
+initAppearance();
 
 class ErrorBoundary extends React.Component {
     constructor(props) {

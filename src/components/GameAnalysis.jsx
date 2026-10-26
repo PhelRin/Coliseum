@@ -752,7 +752,7 @@ export function GameAnalysis({ initialPgn, autoAnalyze = false }) {
                             </span>
                         </div>
                         {pgnHeaders.Result && pgnHeaders.Result !== '*' && (
-                            <div className="text-sm font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg shadow-[0_0_10px_rgba(74,222,128,0.1)] whitespace-nowrap shrink-0">
+                            <div className="text-sm font-black text-primary bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg shadow-[0_0_10px_hsl(var(--primary)/0.1)] whitespace-nowrap shrink-0">
                                 {pgnHeaders.Result}
                             </div>
                         )}
@@ -781,7 +781,7 @@ export function GameAnalysis({ initialPgn, autoAnalyze = false }) {
                             const live = evalInfo && (!evalInfo.fen || evalInfo.fen === fen) ? evalInfo : null;
                             const livePv = live?.pv ? (Array.isArray(live.pv) ? live.pv : live.pv.split(' ')) : [];
                             if (livePv[0]) {
-                                boardArrows.push({ from: livePv[0].substring(0, 2), to: livePv[0].substring(2, 4), color: 'rgba(74, 222, 128, 0.8)' });
+                                boardArrows.push({ from: livePv[0].substring(0, 2), to: livePv[0].substring(2, 4), color: 'hsl(var(--primary) / 0.8)' });
                             }
                             // Show what should have been played instead of a weak move
                             if (currentMoveClass?.bestMove && !['best', 'book', 'forced', 'brilliant', 'great'].includes(classification)) {
