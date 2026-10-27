@@ -18,6 +18,7 @@ class UciEngine extends EventEmitter {
         this.buffer = '';
         this.verbose = true; // set false to silence per-line logging (analysis engines are very chatty)
         this.uciOk = false;
+        this.protocol = 'uci';
     }
 
     start() {
@@ -203,6 +204,22 @@ class UciEngine extends EventEmitter {
 
     hasOption(name) {
         return this.options.has(String(name).toLowerCase());
+    }
+
+    setOption(name, value) {
+        this.send(`setoption name ${name} value ${value}`);
+    }
+
+    newGame() {
+        this.send('ucinewgame');
+    }
+
+    // position: { startFen, moves (UCI) }; go: { wtime, btime, winc, binc, movetime, depth, nodes }
+    think(position, go) {
+        const base = position.startFen ? `position fen ${position.startFen}` : 'position startpos';
+        const moves = position.moves || [];
+        this.send(moves.length ? `${base} moves ${moves.join(' ')}` : base);
+        this.go(go);
     }
 
     go(options) {

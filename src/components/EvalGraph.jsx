@@ -73,7 +73,7 @@ export function EvalGraph({ series, classifications = [], currentPly = -1, onSel
                     return <circle key={c.ply} cx={px} cy={py} r="2.2" fill={color} stroke="#18181b" strokeWidth="0.6" vectorEffect="non-scaling-stroke"><title>{meta?.label}</title></circle>;
                 })}
                 {currentPos >= 0 && currentPos < n && (
-                    <line x1={x(currentPos)} y1="0" x2={x(currentPos)} y2={H} stroke="rgb(74,222,128)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                    <line x1={x(currentPos)} y1="0" x2={x(currentPos)} y2={H} style={{ stroke: 'hsl(var(--primary))' }} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
                 )}
                 {hover !== null && (
                     <line x1={x(hover)} y1="0" x2={x(hover)} y2={H} stroke="rgba(255,255,255,0.5)" strokeWidth="1" vectorEffect="non-scaling-stroke" />

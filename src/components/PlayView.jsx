@@ -136,7 +136,7 @@ export function PlayView({ onReviewGame }) {
                         <div className="min-w-0 flex-1">
                             <p className="text-sm font-bold text-white truncate">{engine ? displayName(engine) : 'No engines found'}</p>
                             <p className="text-[11px] text-muted-foreground truncate">
-                                {isAggro ? 'Aggressive and sacrificial, in the spirit of Tal' : engine ? 'Change opponent' : 'Add an engine in Local Engines'}
+                                {isAggro ? 'Aggressive and sacrificial, in the spirit of Tal' : engine ? 'Change opponent' : 'Add an engine in Engines & Books'}
                             </p>
                         </div>
                         {engines.length > 1 && <ChevronDown size={16} className={`text-muted-foreground transition-transform ${showEngines ? 'rotate-180' : ''}`} />}

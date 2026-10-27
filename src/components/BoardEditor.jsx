@@ -291,7 +291,7 @@ export function BoardEditor({ onAnalyzePosition }) {
                                                 onClick={() => selectPiece(p, 'w')}
                                                 draggable
                                                 onDragStart={(e) => handleDragStartPalette(e, { type: p, color: 'w' })}
-                                                className={`aspect-square p-1.5 rounded-xl border transition-all hover:scale-105 active:scale-95 flex items-center justify-center cursor-grab active:cursor-grabbing ${isSelected ? 'bg-primary/20 border-primary shadow-[0_0_12px_rgba(74,222,128,0.25)]' : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'}`}
+                                                className={`aspect-square p-1.5 rounded-xl border transition-all hover:scale-105 active:scale-95 flex items-center justify-center cursor-grab active:cursor-grabbing ${isSelected ? 'bg-primary/20 border-primary shadow-[0_0_12px_hsl(var(--primary)/0.25)]' : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'}`}
                                             >
                                                 <PieceIcon type={p} color="w" className="w-full h-full drop-shadow" />
                                             </button>
@@ -312,7 +312,7 @@ export function BoardEditor({ onAnalyzePosition }) {
                                                 onClick={() => selectPiece(p, 'b')}
                                                 draggable
                                                 onDragStart={(e) => handleDragStartPalette(e, { type: p, color: 'b' })}
-                                                className={`aspect-square p-1.5 rounded-xl border transition-all hover:scale-105 active:scale-95 flex items-center justify-center cursor-grab active:cursor-grabbing ${isSelected ? 'bg-primary/20 border-primary shadow-[0_0_12px_rgba(74,222,128,0.25)]' : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'}`}
+                                                className={`aspect-square p-1.5 rounded-xl border transition-all hover:scale-105 active:scale-95 flex items-center justify-center cursor-grab active:cursor-grabbing ${isSelected ? 'bg-primary/20 border-primary shadow-[0_0_12px_hsl(var(--primary)/0.25)]' : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'}`}
                                             >
                                                 <PieceIcon type={p} color="b" className="w-full h-full drop-shadow" />
                                             </button>
@@ -419,7 +419,7 @@ export function BoardEditor({ onAnalyzePosition }) {
                     <div className="border-t border-white/5 pt-5 mt-auto">
                         <button
                             onClick={() => onAnalyzePosition(currentFen, true)}
-                            className="w-full py-4 bg-gradient-to-r from-primary to-green-600 hover:brightness-110 text-black font-extrabold text-sm rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(74,222,128,0.2)]"
+                            className="w-full py-4 bg-gradient-to-r from-primary to-primary2 hover:brightness-110 text-black font-extrabold text-sm rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_20px_hsl(var(--primary)/0.2)]"
                         >
                             <Play size={16} className="fill-black" /> Load into Game Analysis
                         </button>

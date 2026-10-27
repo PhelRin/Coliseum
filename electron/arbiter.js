@@ -1,5 +1,5 @@
 const { Chess } = require('chess.js');
-const UciEngine = require('./uci');
+const { createEngine, resolveProtocol } = require('./engine-protocol');
 const { PolyglotBook } = require('./polyglot');
 const EventEmitter = require('events');
 
@@ -7,6 +7,12 @@ const EventEmitter = require('events');
 // little delay (passing messages, updating the screen, other games running at the same time),
 // and an engine shouldn't lose on time because of that.
 const DEFAULT_TIME_MARGIN = 300;
+
+// fixed-depth / fixed-node games have no clock: an engine that thinks longer than this is
+// taken as hung and loses the game
+const FIXED_LIMIT_TIMEOUT_MS = 10 * 60 * 1000;
+
+const MATE_CP = 100000;
 
 const pgnDate = (d = new Date()) =>
     `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
@@ -16,6 +22,7 @@ function pgnTimeControl(tc) {
     if (!tc) return '-';
     if (tc.type === 'unlimited') return '-';
     if (tc.movetime) return `1/${+(tc.movetime / 1000).toFixed(3)}`;
+    if (tc.depth || tc.nodes) return '-';
     if (typeof tc.initial === 'number' && tc.initial > 0) return `${Math.round(tc.initial / 1000)}+${+((tc.inc || 0) / 1000).toFixed(3)}`;
     return '-';
 }
@@ -65,6 +72,12 @@ class Arbiter extends EventEmitter {
      *   openingMoves                                         UCI moves played first, for both sides (optional)
      *   meta: { event, round, whiteName, blackName }         PGN headers (optional)
      *   timeMargin, moveDelay                                see above / pause between moves for the screen
+     *   adjudication: {                                      end decided games early (engine games only)
+     *     resign: { enabled, score (cp), moves },            both engines agree a side is lost by >= score for `moves` moves each
+     *     draw: { enabled, after (move no.), score, moves }, both engines' scores within +-score for `moves` moves each
+     *     maxMoves: { enabled, moves },                      a game longer than this is a draw
+     *   }
+     * Time controls per side: { initial, inc } (clock, ms) | { movetime } | { depth } | { nodes } | { type: 'unlimited' }
      * }
      * Resolves with { winner, reason, pgn, white, black, openingLine } when the game ends, or
      * null if it was stopped.
@@ -99,7 +112,8 @@ class Arbiter extends EventEmitter {
         const wInc = wTC ? (wTC.type === 'unlimited' ? 0 : wTC.inc) : (this.settings.inc || 0);
         const bInitial = bTC ? (bTC.type === 'unlimited' ? -1 : bTC.initial) : (this.settings.initial || 60000);
         const bInc = bTC ? (bTC.type === 'unlimited' ? 0 : bTC.inc) : (this.settings.inc || 0);
-        this.clocks = { w: wTC && wTC.movetime ? -1 : wInitial, b: bTC && bTC.movetime ? -1 : bInitial };
+        const fixed = (tc) => !!(tc && (tc.movetime || tc.depth || tc.nodes));
+        this.clocks = { w: fixed(wTC) ? -1 : wInitial, b: fixed(bTC) ? -1 : bInitial };
         // untimed sides are tracked separately: a running clock can pass through exactly -1 ms inside the time margin
         this.untimed = { w: this.clocks.w === -1, b: this.clocks.b === -1 };
         this.timeIncrements = { w: wInc || 0, b: bInc || 0 };
@@ -107,6 +121,9 @@ class Arbiter extends EventEmitter {
             w: wTC || { initial: this.settings.initial, inc: this.settings.inc },
             b: bTC || { initial: this.settings.initial, inc: this.settings.inc },
         };
+        this.adjudication = whitePath === 'manual' || blackPath === 'manual' ? null : this.settings.adjudication || null;
+        this.plyScores = []; // white's point of view, one per engine move (null = no score)
+        this.searchScore = null;
 
         // books (only used when no forced opening is given)
         this.books.w = new PolyglotBook();
@@ -117,10 +134,17 @@ class Arbiter extends EventEmitter {
         }
         if (this.matchId !== currentMatchId) return null;
 
+        // UCI or WinBoard (asks an engine the first time it is used)
+        const [protoW, protoB] = await Promise.all([
+            whitePath !== 'manual' ? resolveProtocol(whitePath) : null,
+            blackPath !== 'manual' ? resolveProtocol(blackPath) : null,
+        ]);
+        if (this.matchId !== currentMatchId) return null;
+
         // tournaments and Elo runs pass the snapshot of each linked engine they pinned at start
         const launch = this.settings.launchPaths || {};
-        if (whitePath !== 'manual') this.engineWhite = new UciEngine(whitePath, 'White', launch.w);
-        if (blackPath !== 'manual') this.engineBlack = new UciEngine(blackPath, 'Black', launch.b);
+        if (whitePath !== 'manual') this.engineWhite = createEngine(whitePath, 'White', launch.w, protoW);
+        if (blackPath !== 'manual') this.engineBlack = createEngine(blackPath, 'Black', launch.b, protoB);
         if (this.slot !== null) {
             // tournament games: keep the console quiet, there can be several games at once
             if (this.engineWhite) this.engineWhite.verbose = false;
@@ -128,23 +152,29 @@ class Arbiter extends EventEmitter {
         }
 
         try {
+            // an engine that can't be run (missing file, no permission) fails the start at once,
+            // and one that dies mid-game loses it, instead of an unhandled error
+            let startupTimerId;
+            let failStartup = () => {};
+            const startupTimeout = new Promise((_, reject) => {
+                failStartup = reject;
+                startupTimerId = setTimeout(() => reject(new Error('Engine startup timeout (uciok/readyok)')), protoW === 'xboard' || protoB === 'xboard' ? 20000 : 10000);
+            });
+            startupTimeout.catch(() => {});
+            for (const [eng, color] of [[this.engineWhite, 'w'], [this.engineBlack, 'b']]) {
+                if (!eng) continue;
+                eng.on('error', (err) => {
+                    failStartup(new Error(`${this.names[color]} could not be started: ${err && err.message}`));
+                    if (this.gameActive && this.matchId === currentMatchId && this.started) {
+                        this.ui('match-log', `${this.names[color]} failed: ${err && err.message}`);
+                        this.endMatchWithReason(color === 'w' ? 'black' : 'white', 'Engine crashed');
+                    }
+                });
+            }
+            this.started = false;
             if (this.engineWhite) this.engineWhite.start();
             if (this.engineBlack) this.engineBlack.start();
 
-            // apply saved UCI options
-            if (this.configManager) {
-                for (const [eng, p] of [[this.engineWhite, whitePath], [this.engineBlack, blackPath]]) {
-                    if (!eng) continue;
-                    for (const [name, val] of Object.entries(this.configManager.getSavedOptions(p))) {
-                        eng.send(`setoption name ${name} value ${val}`);
-                    }
-                }
-            }
-
-            let startupTimerId;
-            const startupTimeout = new Promise((_, reject) =>
-                (startupTimerId = setTimeout(() => reject(new Error('Engine startup timeout (uciok/readyok)')), 10000))
-            );
             await Promise.race([
                 Promise.all([
                     this.engineWhite ? new Promise((r) => (this.engineWhite.uciOk ? r() : this.engineWhite.once('uciok', r))) : Promise.resolve(),
@@ -152,6 +182,13 @@ class Arbiter extends EventEmitter {
                 ]),
                 startupTimeout,
             ]);
+            // saved engine options (WinBoard engines only list theirs during the handshake)
+            if (this.configManager) {
+                for (const [eng, p] of [[this.engineWhite, whitePath], [this.engineBlack, blackPath]]) {
+                    if (!eng) continue;
+                    for (const [name, val] of Object.entries(this.configManager.getSavedOptions(p))) eng.setOption(name, val);
+                }
+            }
             await Promise.race([
                 Promise.all([
                     this.engineWhite ? this.engineWhite.isReady() : Promise.resolve(),
@@ -162,7 +199,11 @@ class Arbiter extends EventEmitter {
             clearTimeout(startupTimerId);
             if (this.matchId !== currentMatchId) return done;
 
-            for (const eng of [this.engineWhite, this.engineBlack]) if (eng) eng.send('ucinewgame');
+            if (this.engineWhite) this.engineWhite.newGame(this.timeControlConfigs.w);
+            if (this.engineBlack) this.engineBlack.newGame(this.timeControlConfigs.b);
+            if (this.engineWhite && this.engineWhite.protocol === 'xboard') await this.engineWhite.sync().catch(() => {});
+            if (this.engineBlack && this.engineBlack.protocol === 'xboard') await this.engineBlack.sync().catch(() => {});
+            if (this.matchId !== currentMatchId) return done;
 
             // engine names as the engines report them ("id name ..."), unless the caller set them
             if (this.engineWhite && !this.settings.meta?.whiteName && this.engineWhite.name && this.engineWhite.name !== 'White') this.names.w = this.engineWhite.name;
@@ -177,6 +218,19 @@ class Arbiter extends EventEmitter {
                         this.endMatchWithReason(color === 'w' ? 'black' : 'white', 'Engine crashed');
                     }
                 });
+                // WinBoard engines can resign, directly or by claiming the opponent won
+                const resign = () => {
+                    if (this.gameActive && this.matchId === currentMatchId) {
+                        this.ui('match-log', `${this.names[color]} resigns.`);
+                        this.endMatchWithReason(color === 'w' ? 'black' : 'white', 'Resignation');
+                    }
+                };
+                eng.on('resign', resign);
+                eng.on('claim', ({ result }) => {
+                    if ((color === 'w' && result === '0-1') || (color === 'b' && result === '1-0')) resign();
+                    // other claims (wins, draws) are ignored: Coliseum applies the rules itself
+                });
+                eng.on('engine-error', (msg) => this.ui('match-log', `${this.names[color]}: ${msg}`));
             }
 
             this.ui('match-started', {
@@ -186,6 +240,7 @@ class Arbiter extends EventEmitter {
                 clocks: this.clocks,
                 round: this.settings.meta?.round || null,
             });
+            this.started = true;
             this.ui('match-log', 'Both engines ready.');
             this.playNextMove(currentMatchId);
         } catch (err) {
@@ -206,6 +261,7 @@ class Arbiter extends EventEmitter {
 
     stopMatch() {
         this.gameActive = false;
+        this.matchId = null; // a startMatch still waiting on something sees it was stopped
         if (this.moveTimeout) {
             clearTimeout(this.moveTimeout);
             this.moveTimeout = null;
@@ -256,6 +312,13 @@ class Arbiter extends EventEmitter {
             return;
         }
 
+        const adjudicated = this.adjudicate();
+        if (adjudicated) {
+            this.ui('match-log', `Adjudicated: ${adjudicated.reason}`);
+            this.endMatchWithReason(adjudicated.winner, adjudicated.reason);
+            return;
+        }
+
         if (this.flagged(this.activeColor)) {
             this.endMatchWithReason(this.activeColor === 'w' ? 'black' : 'white', 'Time Forfeit');
             return;
@@ -302,6 +365,12 @@ class Arbiter extends EventEmitter {
                 this.ui('match-log', `Time forfeit by ${this.activeColor === 'w' ? 'White' : 'Black'} (exceeded move time)`);
                 this.endMatchWithReason(this.activeColor === 'w' ? 'black' : 'white', 'Time Forfeit');
             }, limit + 2000 + this.timeMargin);
+        } else if (activeTC && (activeTC.depth || activeTC.nodes)) {
+            this.moveTimeout = setTimeout(() => {
+                if (this.matchId !== currentMatchId || !this.gameActive) return;
+                this.ui('match-log', `${this.activeColor === 'w' ? 'White' : 'Black'} did not finish its search in ${FIXED_LIMIT_TIMEOUT_MS / 60000} minutes`);
+                this.endMatchWithReason(this.activeColor === 'w' ? 'black' : 'white', 'Time Forfeit');
+            }, FIXED_LIMIT_TIMEOUT_MS);
         } else {
             this.lastTickTime = Date.now();
             this.clockInterval = setInterval(() => {
@@ -326,13 +395,15 @@ class Arbiter extends EventEmitter {
             return;
         }
 
-        const history = this.game.history({ verbose: true }).map((m) => m.from + m.to + (m.promotion || '')).join(' ');
-        const base = this.startFen ? `position fen ${this.startFen}` : 'position startpos';
-        activeEngine.send(history ? `${base} moves ${history}` : base);
+        const moves = this.game.history({ verbose: true }).map((m) => m.from + m.to + (m.promotion || ''));
 
         const goOptions = {};
         if (activeTC && activeTC.movetime) {
             goOptions.movetime = activeTC.movetime;
+        } else if (activeTC && activeTC.depth) {
+            goOptions.depth = activeTC.depth;
+        } else if (activeTC && activeTC.nodes) {
+            goOptions.nodes = activeTC.nodes;
         } else {
             // never tell an engine it has negative time
             goOptions.wtime = this.untimed.w ? 1800000 : Math.max(1, Math.round(this.clocks.w));
@@ -342,13 +413,18 @@ class Arbiter extends EventEmitter {
         }
 
         activeEngine.removeAllListeners('bestmove');
-        const onBestMove = (bestmove) => {
+        this.searchScore = null;
+        const mover = this.activeColor;
+        const onBestMove = (reply) => {
             if (this.matchId !== currentMatchId || !this.gameActive) return;
+            activeEngine.removeAllListeners('info'); // anything it says now isn't about this move
+            const bestmove = this.toUci(reply);
+            this.plyScores.push(whiteCp(this.searchScore, mover));
             if (this.moveTimeout) clearTimeout(this.moveTimeout);
             if (this.clockInterval) clearInterval(this.clockInterval);
 
             const tc = this.timeControlConfigs[this.activeColor];
-            if (tc && !tc.movetime && !this.untimed[this.activeColor]) {
+            if (tc && !tc.movetime && !tc.depth && !tc.nodes && !this.untimed[this.activeColor]) {
                 const now = Date.now();
                 this.clocks[this.activeColor] -= now - this.lastTickTime;
                 if (this.flagged(this.activeColor)) {
@@ -372,8 +448,84 @@ class Arbiter extends EventEmitter {
         };
         activeEngine.once('bestmove', onBestMove);
         activeEngine.removeAllListeners('info');
-        activeEngine.on('info', (info) => this.ui('engine-info', { color: this.activeColor, info }));
-        activeEngine.go(goOptions);
+        const xboard = activeEngine.protocol === 'xboard';
+        activeEngine.on('info', (info) => {
+            if (info.score && !info.score.bound) this.searchScore = info.score;
+            if (xboard && info.pv) info.pv = this.pvToUci(info.pv);
+            this.ui('engine-info', { color: this.activeColor, info });
+        });
+        activeEngine.think({ startFen: this.startFen, moves, side: this.activeColor }, goOptions);
+    }
+
+    // An engine's move in coordinate notation. WinBoard engines may answer in SAN ("Nf3",
+    // "O-O") or with "=" before a promotion piece.
+    toUci(move) {
+        if (!move) return move;
+        const m = String(move).trim().replace('=', '');
+        if (/^[a-h][1-8][a-h][1-8][qrbnQRBN]?$/.test(m)) return m.toLowerCase();
+        try {
+            const tmp = new Chess(this.game.fen());
+            const r = tmp.move(m.replace(/^0-0-0/, 'O-O-O').replace(/^0-0/, 'O-O'), { strict: false });
+            if (r) return r.from + r.to + (r.promotion || '');
+        } catch (e) { /* not a move */ }
+        return m;
+    }
+
+    // WinBoard thinking output usually has the PV in SAN; the board arrows need coordinates
+    pvToUci(pv) {
+        const tokens = String(pv).split(/\s+/).filter(Boolean);
+        if (tokens.every((t) => /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(t))) return pv;
+        try {
+            const tmp = new Chess(this.game.fen());
+            const out = [];
+            for (const t of tokens) {
+                let r = null;
+                try {
+                    r = /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(t)
+                        ? tmp.move({ from: t.slice(0, 2), to: t.slice(2, 4), promotion: t[4] })
+                        : tmp.move(t.replace(/[+#!?]+$/, ''), { strict: false });
+                } catch (e) {
+                    r = null;
+                }
+                if (!r) break;
+                out.push(r.from + r.to + (r.promotion || ''));
+            }
+            return out.join(' ');
+        } catch (e) {
+            return '';
+        }
+    }
+
+    // ---- adjudication --------------------------------------------------------------------
+    // Uses the score each engine reported for its own last moves (cutechess-style: both
+    // engines must agree). Returns { winner, reason } or null.
+    adjudicate() {
+        const a = this.adjudication;
+        if (!a) return null;
+        const plies = this.game.history().length;
+        if (a.maxMoves && a.maxMoves.enabled && a.maxMoves.moves > 0 && plies >= a.maxMoves.moves * 2) {
+            return { winner: 'draw', reason: 'Draw (Move limit)' };
+        }
+        const recent = (n) => {
+            if (this.plyScores.length < n) return null;
+            const r = this.plyScores.slice(-n);
+            return r.every((x) => typeof x === 'number') ? r : null;
+        };
+        if (a.resign && a.resign.enabled) {
+            const n = Math.max(1, a.resign.moves | 0) * 2;
+            const r = recent(n);
+            const t = Math.max(1, Number(a.resign.score) || 0);
+            if (r && r.every((x) => x <= -t)) return { winner: 'black', reason: 'Adjudication (resign)' };
+            if (r && r.every((x) => x >= t)) return { winner: 'white', reason: 'Adjudication (resign)' };
+        }
+        // draws from move number `after` on (the game's own move numbers, so EPD starts count too)
+        if (a.draw && a.draw.enabled && this.game.moveNumber() >= (a.draw.after | 0)) {
+            const n = Math.max(1, a.draw.moves | 0) * 2;
+            const r = recent(n);
+            const t = Math.max(0, Number(a.draw.score) || 0);
+            if (r && r.every((x) => Math.abs(x) <= t)) return { winner: 'draw', reason: 'Draw (Adjudication)' };
+        }
+        return null;
     }
 
     endMatchWithReason(winner, reason) {
@@ -391,7 +543,8 @@ class Arbiter extends EventEmitter {
         const meta = this.settings.meta || {};
         const result = winner === 'white' ? '1-0' : winner === 'black' ? '0-1' : '1/2-1/2';
         const termination =
-            reason === 'Time Forfeit' ? 'time forfeit'
+            /Adjudication|Move limit/.test(reason || '') ? 'adjudication'
+            : reason === 'Time Forfeit' ? 'time forfeit'
                 : reason === 'Illegal Move' ? 'rules infraction'
                     : reason === 'Engine crashed' ? 'abandoned'
                         : 'normal';
@@ -494,9 +647,21 @@ class Arbiter extends EventEmitter {
     }
 }
 
+// an engine score (side to move's point of view) as centipawns from White's point of view
+function whiteCp(score, mover) {
+    if (!score) return null;
+    const v = Number(score.value);
+    if (!Number.isFinite(v)) return null;
+    let cp;
+    if (score.unit === 'mate') cp = v > 0 ? MATE_CP - v : v < 0 ? -MATE_CP - v : -MATE_CP;
+    else if (score.unit === 'cp') cp = v;
+    else return null;
+    return mover === 'w' ? cp : -cp;
+}
+
 function baseName(p) {
     if (!p) return 'Unknown';
     return String(p).split(/[\\/]/).pop().replace(/\.exe$/i, '');
 }
 
-module.exports = { Arbiter, pgnTimeControl, DEFAULT_TIME_MARGIN };
+module.exports = { Arbiter, pgnTimeControl, DEFAULT_TIME_MARGIN, whiteCp };

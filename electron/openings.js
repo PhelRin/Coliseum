@@ -65,11 +65,18 @@ function openingFor(index, seed = 1) {
 }
 
 function shuffled(n, seed) {
+    // Fisher-Yates with a small 32-bit generator (mulberry32), so every seed gives a different order
     const a = Array.from({ length: n }, (_, i) => i);
-    let s = (seed >>> 0) || 1;
+    let s = seed >>> 0 || 1;
+    const next = () => {
+        s = (s + 0x6d2b79f5) >>> 0;
+        let t = s;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
     for (let i = n - 1; i > 0; i--) {
-        s = (s * 1103515245 + 12345) >>> 0;
-        const j = s % (i + 1);
+        const j = Math.floor(next() * (i + 1));
         [a[i], a[j]] = [a[j], a[i]];
     }
     return a;

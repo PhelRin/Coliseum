@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Play, Sword, Trophy, FolderOpen, CircuitBoard, Activity, TrendingUp, Twitch, History, Heart, Volume2, VolumeX, RotateCcw, Zap, Grid, Link2, Unlink, AlertTriangle, Copy, X } from 'lucide-react';
+import { BookOpen, Settings, Play, Sword, Trophy, FolderOpen, CircuitBoard, Activity, TrendingUp, Twitch, History, Heart, Volume2, VolumeX, RotateCcw, Zap, Grid, Link2, Unlink, AlertTriangle, Copy, X } from 'lucide-react';
 import { MatchSetup } from './components/MatchSetup';
 import { Arena } from './components/Arena';
 import { TournamentSetup } from './components/TournamentSetup';
@@ -16,6 +16,22 @@ import { EngineStatsModal, getRatingTier } from './components/EngineStatsModal';
 import Training from './components/Training';
 import { BoardEditor } from './components/BoardEditor';
 import { PlayView } from './components/PlayView';
+import { SidebarNav } from './components/SidebarNav';
+import { BooksView } from './components/BooksView';
+
+// the sidebar tabs in their default order (people can reorder and hide them: "Customize")
+const NAV_ITEMS = [
+    { id: 'play', label: 'Play', icon: <Play /> },
+    { id: 'home', label: 'Tournament', icon: <Trophy /> },
+    { id: 'match', label: 'Quick Match', icon: <Sword /> },
+    { id: 'analysis', label: 'Game Analysis', icon: <Activity /> },
+    { id: 'board-editor', label: 'Board Editor', icon: <Grid /> },
+    { id: 'training', label: 'Tactics Trainer', icon: <Zap /> },
+    { id: 'twitch', label: 'Twitch', icon: <Twitch /> },
+    { id: 'history', label: 'Archive', icon: <History /> },
+    { id: 'elo', label: 'Elo Estimation', icon: <Activity /> },
+    { id: 'engines', label: 'Engines & Books', icon: <FolderOpen /> },
+];
 
 function App() {
     const [activeTab, setActiveTab] = useState('home'); // 'home', 'match', 'engines', 'review', 'twitch'
@@ -154,6 +170,9 @@ function App() {
                 if (!result.success) {
                     alert("Book installation failed: " + result.error);
                 } else {
+                    window.dispatchEvent(new Event('refresh-engines'));
+                    setActiveTab('engines');
+                    setTimeout(() => window.dispatchEvent(new Event('show-books')), 50);
                     setToastMessage("Book Installed Successfully!");
                     setTimeout(() => setToastMessage(null), 4000);
                 }
@@ -213,7 +232,7 @@ function App() {
                     }}
                     title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 >
-                    <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-primary to-green-600 flex items-center justify-center shadow-[0_0_15px_rgba(74,222,128,0.3)] hover:scale-105 transition-transform">
+                    <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-primary to-primary2 flex items-center justify-center shadow-[0_0_15px_hsl(var(--primary)/0.3)] hover:scale-105 transition-transform">
                         <CircuitBoard className="w-6 h-6 text-black" />
                     </div>
                     {!isSidebarCollapsed && (
@@ -224,84 +243,17 @@ function App() {
                     )}
                 </div>
 
-                <nav className="space-y-1 flex-1 min-h-0 overflow-y-auto overflow-x-hidden -mx-1 px-1 sidebar-scroll">
-                    <SidebarItem
-                        active={activeTab === 'play'}
-                        onClick={() => handleTabChange('play')}
-                        icon={<Play />}
-                        label="Play"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-                    <SidebarItem
-                        active={activeTab === 'home'}
-                        onClick={() => handleTabChange('home')}
-                        icon={<Trophy />}
-                        label="Tournament"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-                    <SidebarItem
-                        active={activeTab === 'match'}
-                        onClick={() => handleTabChange('match')}
-                        icon={<Sword />}
-                        label="Quick Match"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-
-                    <SidebarItem
-                        active={activeTab === 'analysis'}
-                        onClick={() => handleTabChange('analysis')}
-                        icon={<Activity />} // Reusing activity for now, maybe Search or Eye icon? User asked for sidebar.
-                        label="Game Analysis"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-
-                    <SidebarItem
-                        active={activeTab === 'board-editor'}
-                        onClick={() => handleTabChange('board-editor')}
-                        icon={<Grid />}
-                        label="Board Editor"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-
-                    <SidebarItem
-                        active={activeTab === 'training'}
-                        onClick={() => handleTabChange('training')}
-                        icon={<Zap />}
-                        label="Tactics Trainer"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-
-                    <SidebarItem
-                        active={activeTab === 'twitch'}
-                        onClick={() => handleTabChange('twitch')}
-                        icon={<Twitch size={20} />}
-                        label="Twitch"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-
-                    <SidebarItem
-                        active={activeTab === 'history'}
-                        onClick={() => handleTabChange('history')}
-                        icon={<History />}
-                        label="Archive"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-
-                    <SidebarItem
-                        active={activeTab === 'elo'}
-                        onClick={() => handleTabChange('elo')}
-                        icon={<Activity />}
-                        label="Elo Estimation"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-                    <SidebarItem
-                        active={activeTab === 'engines'}
-                        onClick={() => handleTabChange('engines')}
-                        icon={<FolderOpen />}
-                        label="Local Engines"
-                        isSidebarCollapsed={isSidebarCollapsed}
-                    />
-                </nav>
+                <SidebarNav
+                    items={NAV_ITEMS}
+                    activeTab={activeTab}
+                    onSelect={handleTabChange}
+                    collapsed={isSidebarCollapsed}
+                    onExpand={() => {
+                        setIsSidebarCollapsed(false);
+                        setSidebarPinned(false);
+                    }}
+                    Item={SidebarItem}
+                />
 
                 <div className="mt-2 pt-2 space-y-1 shrink-0">
                     <SidebarItem
@@ -320,9 +272,9 @@ function App() {
                         isSidebarCollapsed={isSidebarCollapsed}
                     />
 
-                    {/* Patreon Edge Case */}
+                    {/* Support the Dev: StreamElements tip page */}
                     <button
-                        onClick={() => window.electronAPI && window.electronAPI.send('open-external', 'https://www.patreon.com/c/phelrin')}
+                        onClick={() => window.electronAPI && window.electronAPI.send('open-external', 'https://streamelements.com/phelrin/tip')}
                         title={isSidebarCollapsed ? "Support the Dev" : undefined}
                         className={`
                             w-full flex items-center gap-4 py-2.5 rounded-xl transition-all duration-300 group
@@ -343,7 +295,7 @@ function App() {
                             <div className="w-2 h-2 rounded-full bg-primary animate-pulse" title="System Ready" />
                         </div>
                     ) : (
-                        <div className="px-4 py-3 rounded-xl bg-gradient-to-r from-green-900/20 to-transparent border border-green-500/10">
+                        <div className="px-4 py-3 rounded-xl bg-gradient-to-r from-primary/10 to-transparent border border-primary/10">
                             <p className="text-xs text-muted-foreground mb-1">Status</p>
                             <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
@@ -368,7 +320,7 @@ function App() {
                                             activeTab === 'training' ? 'Tactics Trainer' :
                                                 activeTab === 'twitch' ? 'Twitch Integration' :
                                                     activeTab === 'history' ? 'Match Archive' :
-                                                        activeTab === 'engines' ? 'Local Engines' :
+                                                        activeTab === 'engines' ? 'Engines & Books' :
                                                             'Coliseum'}
                     </h2>
                 </div>
@@ -400,7 +352,7 @@ function App() {
 
                         {activeTab === 'elo' && <EloEstimationDashboard />}
                         {activeTab === 'history' && <HistoryDashboard onAnalyzeGame={(pgn) => handleAnalyzePosition(pgn, false)} />}
-                        {activeTab === 'engines' && <EnginesView />}
+                        {activeTab === 'engines' && <EnginesAndBooks />}
                     </div>
                 </div>
             </main>
@@ -413,9 +365,9 @@ function App() {
                     onDragOver={(e) => e.preventDefault()}
                 >
                     <div className="pointer-events-none flex flex-col items-center justify-center">
-                        <CircuitBoard className="w-24 h-24 text-primary mb-6 animate-bounce drop-shadow-[0_0_20px_rgba(74,222,128,0.5)]" />
+                        <CircuitBoard className="w-24 h-24 text-primary mb-6 animate-bounce drop-shadow-[0_0_20px_hsl(var(--primary)/0.5)]" />
                         <h2 className="text-4xl font-black text-white drop-shadow-xl tracking-tight">Drop an Engine or .bin Book</h2>
-                        <p className="text-primary font-bold mt-2 uppercase tracking-widest text-sm">Valid inputs: .exe, .bin, Directories</p>
+                        <p className="text-primary font-bold mt-2 uppercase tracking-widest text-sm">Engines, .bin books or folders</p>
                     </div>
                 </div>
             )}
@@ -456,19 +408,19 @@ function App() {
 
             {installing && (
                 <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in">
-                    <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-primary mb-6 shadow-[0_0_30px_rgba(74,222,128,0.4)]"></div>
+                    <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-primary mb-6 shadow-[0_0_30px_hsl(var(--primary)/0.4)]"></div>
                     <h2 className="text-3xl font-bold text-white tracking-tight drop-shadow-lg">{installing === 'link' ? 'Linking engine...' : 'Installing to Vault...'}</h2>
                 </div>
             )}
 
             {toastMessage && (
-                <div className="fixed bottom-6 right-6 z-[100] bg-primary text-black font-bold px-6 py-4 rounded-xl shadow-[0_0_20px_rgba(74,222,128,0.3)] animate-in slide-in-from-bottom-5 fade-in duration-300">
+                <div className="fixed bottom-6 right-6 z-[100] bg-primary text-black font-bold px-6 py-4 rounded-xl shadow-[0_0_20px_hsl(var(--primary)/0.3)] animate-in slide-in-from-bottom-5 fade-in duration-300">
                     {toastMessage}
                 </div>
             )}
 
             {updateInfo && (
-                <div className="fixed bottom-6 left-6 z-[100] max-w-sm bg-card/90 border border-primary/40 p-5 rounded-2xl shadow-[0_0_30px_rgba(74,222,128,0.15)] backdrop-blur-xl animate-in slide-in-from-left-5 fade-in duration-300 flex flex-col gap-3">
+                <div className="fixed bottom-6 left-6 z-[100] max-w-sm bg-card/90 border border-primary/40 p-5 rounded-2xl shadow-[0_0_30px_hsl(var(--primary)/0.15)] backdrop-blur-xl animate-in slide-in-from-left-5 fade-in duration-300 flex flex-col gap-3">
                     <div>
                         <h4 className="text-sm font-extrabold text-white flex items-center gap-1.5">
                             <Zap size={14} className="text-primary animate-pulse" /> Update Available (v{updateInfo.version})
@@ -532,7 +484,7 @@ function SidebarItem({ active, onClick, icon, label, isSidebarCollapsed }) {
             className={`
                 w-full flex items-center gap-3 py-2.5 [@media(max-height:760px)]:py-2 rounded-xl transition-all duration-200 group
                 ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'}
-                ${active ? 'bg-primary/10 text-primary border border-primary/20 shadow-[0_0_10px_rgba(74,222,128,0.05)]' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground border border-transparent'}
+                ${active ? 'bg-primary/10 text-primary border border-primary/20 shadow-[0_0_10px_hsl(var(--primary)/0.05)]' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground border border-transparent'}
             `}
         >
             {React.cloneElement(icon, { size: 20, className: active ? "fill-primary/20 shrink-0" : "group-hover:scale-110 transition-transform shrink-0" })}
@@ -543,6 +495,55 @@ function SidebarItem({ active, onClick, icon, label, isSidebarCollapsed }) {
 }
 
 import { EngineConfigModal } from './components/EngineConfigModal';
+
+// "Engines & Books": the engines and the opening books, as two tabs on one page
+function EnginesAndBooks() {
+    const [tab, setTab] = useState(() => {
+        try {
+            return localStorage.getItem('enginesTab') === 'books' ? 'books' : 'engines';
+        } catch (e) {
+            return 'engines';
+        }
+    });
+    const choose = (t) => {
+        setTab(t);
+        try {
+            localStorage.setItem('enginesTab', t);
+        } catch (e) { /* not available */ }
+    };
+    useEffect(() => {
+        const show = () => choose('books');
+        window.addEventListener('show-books', show);
+        return () => window.removeEventListener('show-books', show);
+    }, []);
+    return (
+        <div className="space-y-6">
+            <div className="flex gap-1 bg-card border border-white/5 rounded-xl p-1 w-fit">
+                {[['engines', 'Engines', CircuitBoard], ['books', 'Opening books', BookOpen]].map(([id, label, Icon]) => (
+                    <button
+                        key={id}
+                        type="button"
+                        onClick={() => choose(id)}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors ${tab === id ? 'bg-primary text-black' : 'text-muted-foreground hover:text-foreground hover:bg-white/5'}`}
+                    >
+                        <Icon size={15} /> {label}
+                    </button>
+                ))}
+            </div>
+            {tab === 'books' ? (
+                <div className="space-y-6">
+                    <div>
+                        <h2 className="text-3xl font-bold text-foreground">Opening Books</h2>
+                        <p className="text-muted-foreground mt-1">Polyglot books for tournaments, matches and Game Review</p>
+                    </div>
+                    <BooksView />
+                </div>
+            ) : (
+                <EnginesView />
+            )}
+        </div>
+    );
+}
 
 function EnginesView() {
     const [engines, setEngines] = useState([]);

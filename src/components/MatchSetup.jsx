@@ -414,7 +414,7 @@ export function MatchSetup({ onStart }) {
 
             <button
                 onClick={handleStart}
-                className="w-full py-4 bg-primary text-black text-xl font-bold rounded-xl shadow-[0_0_20px_rgba(74,222,128,0.2)] hover:shadow-[0_0_30px_rgba(74,222,128,0.4)] hover:brightness-110 active:scale-[0.99] transition-all flex items-center justify-center gap-3"
+                className="w-full py-4 bg-primary text-black text-xl font-bold rounded-xl shadow-[0_0_20px_hsl(var(--primary)/0.2)] hover:shadow-[0_0_30px_hsl(var(--primary)/0.4)] hover:brightness-110 active:scale-[0.99] transition-all flex items-center justify-center gap-3"
             >
                 <Sword className="w-6 h-6 fill-black" />
                 Start Match

@@ -126,8 +126,8 @@ export function EngineStatsModal({ engine, onClose }) {
             <svg className="w-full h-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
                 <defs>
                     <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="rgb(74, 222, 128)" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="rgb(74, 222, 128)" stopOpacity="0.0" />
+                        <stop offset="0%" style={{ stopColor: 'hsl(var(--primary))' }} stopOpacity="0.25" />
+                        <stop offset="100%" style={{ stopColor: 'hsl(var(--primary))' }} stopOpacity="0.0" />
                     </linearGradient>
                 </defs>
                 {/* Horizontal Guide Lines */}
@@ -139,13 +139,13 @@ export function EngineStatsModal({ engine, onClose }) {
                 <path d={fillD} fill="url(#chartGlow)" />
 
                 {/* Line Path */}
-                <path d={pathD} fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={pathD} fill="none" style={{ stroke: 'hsl(var(--primary))' }} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
 
                 {/* Data Points */}
                 {points.map((p, i) => (
                     <g key={i} className="group/dot cursor-pointer">
-                        <circle cx={p.x} cy={p.y} r="4" fill="#18181b" stroke="#4ade80" strokeWidth="2" />
-                        <circle cx={p.x} cy={p.y} r="8" fill="#4ade80" opacity="0" className="hover:opacity-20 transition-opacity" />
+                        <circle cx={p.x} cy={p.y} r="4" fill="#18181b" style={{ stroke: 'hsl(var(--primary))' }} strokeWidth="2" />
+                        <circle cx={p.x} cy={p.y} r="8" style={{ fill: 'hsl(var(--primary))' }} opacity="0" className="hover:opacity-20 transition-opacity" />
                         {/* Tooltip on Hover */}
                         <title>{`${p.rating} ELO vs ${p.label || 'Initial'}`}</title>
                     </g>
@@ -327,7 +327,7 @@ export function EngineStatsModal({ engine, onClose }) {
 
                 {/* Modal Footer */}
                 <div className="p-6 border-t border-white/5 bg-black/20 rounded-b-2xl shrink-0 flex justify-end">
-                    <button onClick={onClose} className="px-6 py-2.5 bg-primary text-black font-bold rounded-xl hover:brightness-110 active:scale-[0.99] transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(74,222,128,0.2)]">
+                    <button onClick={onClose} className="px-6 py-2.5 bg-primary text-black font-bold rounded-xl hover:brightness-110 active:scale-[0.99] transition-all flex items-center gap-2 shadow-[0_0_15px_hsl(var(--primary)/0.2)]">
                         Close
                     </button>
                 </div>

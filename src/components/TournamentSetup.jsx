@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Trophy, Users, GitMerge, Clock, Play, Settings, X, Check, FolderOpen, Search, Trash2, Swords, Repeat, Star, BookOpen, Cpu, Info, Crown } from 'lucide-react';
+import { Trophy, Users, GitMerge, Clock, Play, Settings, X, Check, FolderOpen, Search, Trash2, Swords, Repeat, Star, BookOpen, Cpu, Info, Crown, FlaskConical, Gavel, AlertCircle } from 'lucide-react';
 import { PromptModal } from './PromptModal';
 import { getRatingTier } from './EngineStatsModal';
 
@@ -9,6 +9,27 @@ export const FORMATS = {
     swiss: { title: 'Swiss', desc: 'Rounds of pairings between engines on similar scores.', icon: Users },
     elimination: { title: 'Knockout', desc: 'Lose a match and you are out. Tiebreaks if level.', icon: Trophy },
     double_elimination: { title: 'Double Knockout', desc: 'Knockout with a second chance in a losers’ bracket.', icon: GitMerge },
+    sprt: { title: 'SPRT Test', desc: 'Is a new build stronger? Plays game pairs until the test decides.', icon: FlaskConical },
+};
+
+// SPRT bounds people commonly use (logistic Elo)
+const SPRT_PRESETS = [
+    { id: 'gain', label: 'Gain [0, 5]', elo0: 0, elo1: 5 },
+    { id: 'big', label: 'Big gain [0, 10]', elo0: 0, elo1: 10 },
+    { id: 'nonreg', label: 'No regression [-5, 0]', elo0: -5, elo1: 0 },
+];
+
+const LIMIT_MODES = [
+    ['clock', 'Clock'],
+    ['movetime', 'Time per move'],
+    ['depth', 'Depth'],
+    ['nodes', 'Nodes'],
+];
+
+export const DEFAULT_ADJUDICATION = {
+    resign: { enabled: true, score: 700, moves: 4 },
+    draw: { enabled: true, after: 40, score: 10, moves: 8 },
+    maxMoves: { enabled: false, moves: 200 },
 };
 
 const TIME_PRESETS = {
@@ -29,10 +50,12 @@ const fmtMinutes = (ms) => {
 // rough length of one game for the summary (each side uses most of its clock)
 function estimateGameMs(tc) {
     if (tc.movetime) return tc.movetime * 2 * 60;
+    if (tc.depth) return Math.min(600000, 2 * 60 * 40 * Math.pow(1.6, Math.max(0, tc.depth - 8)));
+    if (tc.nodes) return 2 * 60 * Math.max(20, tc.nodes / 1000);
     return Math.max(10000, (tc.initial * 2 + tc.inc * 2 * 50) * 0.8);
 }
 
-export function planFor(format, n, { matchesPerPairing, rounds }) {
+export function planFor(format, n, { matchesPerPairing, rounds, sprtMax }) {
     if (n < 2) return { matches: 0, games: 0, atLeast: false };
     if (format === 'gauntlet') return { matches: (n - 1) * matchesPerPairing, games: 2 * (n - 1) * matchesPerPairing, atLeast: false };
     if (format === 'round_robin') {
@@ -41,6 +64,7 @@ export function planFor(format, n, { matchesPerPairing, rounds }) {
     }
     if (format === 'swiss') return { matches: Math.floor(n / 2) * rounds, games: 2 * Math.floor(n / 2) * rounds, atLeast: false, byes: n % 2 ? rounds : 0 };
     if (format === 'elimination') return { matches: n - 1, games: 2 * (n - 1), atLeast: true };
+    if (format === 'sprt') return { matches: 1, games: sprtMax || 0, upTo: true };
     return { matches: 2 * n - 2, games: 2 * (2 * n - 2), atLeast: true };
 }
 
@@ -62,6 +86,16 @@ export function TournamentSetup({ onStart }) {
     const [book, setBook] = useState(null);
     const [installedBooks, setInstalledBooks] = useState([]);
     const [concurrency, setConcurrency] = useState(1);
+    const [limitMode, setLimitMode] = useState('clock');
+    const [moveTimeSec, setMoveTimeSec] = useState(1);
+    const [depth, setDepth] = useState(10);
+    const [nodes, setNodes] = useState(100000);
+    const [openingFile, setOpeningFile] = useState(null);
+    const [openingInfo, setOpeningInfo] = useState(null);
+    const [openingOrder, setOpeningOrder] = useState('random');
+    const [openingPlies, setOpeningPlies] = useState(0);
+    const [adjudication, setAdjudication] = useState(DEFAULT_ADJUDICATION);
+    const [sprtCfg, setSprtCfg] = useState({ elo0: 0, elo1: 5, alpha: 0.05, beta: 0.05, maxGames: 20000 });
     const [cpus, setCpus] = useState(null);
     const [savedTournament, setSavedTournament] = useState(null);
     const [presets, setPresets] = useState([]);
@@ -100,40 +134,74 @@ export function TournamentSetup({ onStart }) {
 
     // keep the main engine valid
     useEffect(() => {
-        if (format !== 'gauntlet') return;
+        if (format !== 'gauntlet' && format !== 'sprt') return;
         if (!hero || !selected.includes(hero)) setHero(selected[0] || null);
     }, [format, selected, hero]);
 
     const toggle = (path) => setSelected((s) => (s.includes(path) ? s.filter((p) => p !== path) : [...s, path]));
 
     const tc = useMemo(() => {
+        if (limitMode === 'movetime') return { type: 'movetime', movetime: Math.max(10, Math.round((Number(moveTimeSec) || 1) * 1000)) };
+        if (limitMode === 'depth') return { type: 'depth', depth: Math.max(1, Math.min(99, parseInt(depth, 10) || 1)) };
+        if (limitMode === 'nodes') return { type: 'nodes', nodes: Math.max(1, parseInt(nodes, 10) || 1) };
         if (tcType === 'custom') {
             const mult = timeUnit === 'minutes' ? 60000 : 1000;
             return { type: 'custom', initial: Math.max(1, Number(customInitial) || 1) * mult, inc: Math.max(0, Number(customInc) || 0) * 1000 };
         }
         const p = TIME_PRESETS[tcType];
         return { type: tcType, initial: p.initial, inc: p.inc };
-    }, [tcType, customInitial, customInc, timeUnit]);
+    }, [tcType, customInitial, customInc, timeUnit, limitMode, moveTimeSec, depth, nodes]);
 
-    const plan = planFor(format, selected.length, { matchesPerPairing, rounds });
+    // an EPD / PGN opening file: count its openings so problems show before the start
+    useEffect(() => {
+        if (!openingFile || !window.electronAPI) {
+            setOpeningInfo(null);
+            return;
+        }
+        let alive = true;
+        setOpeningInfo({ loading: true });
+        window.electronAPI.invoke('inspect-openings', { file: openingFile, plies: openingPlies }).then((r) => alive && setOpeningInfo(r || { ok: false, error: 'Could not read the file.' }));
+        return () => {
+            alive = false;
+        };
+    }, [openingFile]);
+
+    const plan = planFor(format, selected.length, { matchesPerPairing, rounds, sprtMax: sprtCfg.maxGames });
     const est = plan.games ? (plan.games * estimateGameMs(tc)) / Math.max(1, concurrency) : 0;
     const maxRounds = Math.max(1, selected.length - 1);
-    const canStart = selected.length >= 2 && (format !== 'gauntlet' || !!hero) && (openingMode !== 'book' || !!book);
+    const sprtOk = format !== 'sprt' || (selected.length === 2 && !!hero && Number(sprtCfg.elo1) > Number(sprtCfg.elo0));
+    const openingsOk = (openingMode !== 'book' || !!book) && (openingMode !== 'file' || (openingInfo && openingInfo.ok));
+    const canStart = selected.length >= 2 && (format !== 'gauntlet' || !!hero) && openingsOk && sprtOk;
+    const startHint = selected.length < 2 ? 'Select at least 2 engines.'
+        : format === 'sprt' && selected.length !== 2 ? 'An SPRT test needs exactly 2 engines: the new build and the base.'
+            : format === 'sprt' && !(Number(sprtCfg.elo1) > Number(sprtCfg.elo0)) ? 'Elo1 must be higher than Elo0.'
+                : openingMode === 'book' && !book ? 'Choose an opening book.'
+                    : openingMode === 'file' && !(openingInfo && openingInfo.ok) ? 'Choose a working EPD or PGN opening file.'
+                        : 'Pick the main engine.';
+    const baseEngine = format === 'sprt' ? selectedEngines.find((e) => e.path !== hero) : null;
+    const openingsConfig = () => {
+        if (openingMode === 'book') return { mode: 'book', book };
+        if (openingMode === 'file') return { mode: 'file', file: openingFile, order: openingOrder, plies: openingPlies * 2 };
+        return { mode: openingMode };
+    };
     const threadsHint = cpus ? Math.max(1, Math.floor(cpus / 2)) : null;
 
     const handleStart = () => {
         if (!canStart) return;
         const list = selectedEngines.map((e) => ({ name: engineName(e), path: e.path }));
+        const heroFirst = format === 'gauntlet' || format === 'sprt';
         onStart({
             type: format,
-            engines: format === 'gauntlet' ? [list.find((e) => e.path === hero), ...list.filter((e) => e.path !== hero)] : list,
+            engines: heroFirst ? [list.find((e) => e.path === hero), ...list.filter((e) => e.path !== hero)] : list,
             hero: format === 'gauntlet' ? hero : undefined,
             matchesPerPairing,
             rounds: Math.min(rounds, 50),
             order,
             concurrency,
-            openings: openingMode === 'book' ? { mode: 'book', book } : { mode: openingMode },
+            openings: openingsConfig(),
             settings: tc,
+            adjudication,
+            sprt: format === 'sprt' ? sprtCfg : undefined,
         });
     };
 
@@ -143,7 +211,10 @@ export function TournamentSetup({ onStart }) {
         await window.electronAPI.savePreset({
             name,
             type: 'tournament',
-            config: { version: 2, format, matchesPerPairing, rounds, order, tcType, customInitial, customInc, timeUnit, openingMode, book, concurrency, engines: selected, hero },
+            config: {
+                version: 3, format, matchesPerPairing, rounds, order, tcType, customInitial, customInc, timeUnit, openingMode, book, concurrency, engines: selected, hero,
+                limitMode, moveTimeSec, depth, nodes, openingFile, openingOrder, openingPlies, adjudication, sprtCfg,
+            },
         });
         loadPresets();
     };
@@ -156,7 +227,18 @@ export function TournamentSetup({ onStart }) {
         if (c.matchesPerPairing) setMatchesPerPairing(c.matchesPerPairing);
         if (c.rounds) setRounds(c.rounds);
         if (c.order) setOrder(c.order);
-        if (c.version === 2) {
+        if (c.version >= 3) {
+            setLimitMode(c.limitMode || 'clock');
+            if (c.moveTimeSec) setMoveTimeSec(c.moveTimeSec);
+            if (c.depth) setDepth(c.depth);
+            if (c.nodes) setNodes(c.nodes);
+            setOpeningFile(c.openingFile || null);
+            setOpeningOrder(c.openingOrder || 'random');
+            setOpeningPlies(c.openingPlies || 0);
+            if (c.adjudication) setAdjudication(c.adjudication);
+            if (c.sprtCfg) setSprtCfg(c.sprtCfg);
+        }
+        if (c.version >= 2) {
             setTcType(c.tcType || 'blitz');
             setCustomInitial(c.customInitial ?? 5);
             setCustomInc(c.customInc ?? 3);
@@ -183,6 +265,15 @@ export function TournamentSetup({ onStart }) {
             }
         }
         setSelected(engines.filter((x) => (c.engines || []).includes(x.path)).map((x) => x.path));
+    };
+
+    const browseOpenings = async () => {
+        if (!window.electronAPI) return;
+        const file = await window.electronAPI.dialogOpenFile({ filters: [{ name: 'Opening files', extensions: ['epd', 'pgn', 'fen'] }] });
+        if (file) {
+            setOpeningFile(file);
+            setOpeningMode('file');
+        }
     };
 
     const browseBook = async () => {
@@ -227,7 +318,9 @@ export function TournamentSetup({ onStart }) {
                         <h3 className="text-yellow-400 font-bold">Unfinished tournament found</h3>
                         <p className="text-yellow-200/70 text-sm">
                             {savedIsNew
-                                ? `${FORMATS[savedTournament.config.type]?.title || 'Tournament'} with ${savedTournament.config.engines.length} engines · ${savedDone} of ${savedTournament.games.length} games played.`
+                                ? savedTournament.sprt
+                                    ? `SPRT Test: ${savedTournament.config.engines.map((e) => e.name).join(' vs ')} · ${savedTournament.sprt.games} games played · LLR ${(savedTournament.sprt.llr || 0).toFixed(2)}.`
+                                    : `${FORMATS[savedTournament.config.type]?.title || 'Tournament'} with ${savedTournament.config.engines.length} engines · ${savedDone} of ${savedTournament.games.length} games played.`
                                 : 'It was started by an older version of Coliseum and can’t be resumed.'}
                         </p>
                     </div>
@@ -267,7 +360,7 @@ export function TournamentSetup({ onStart }) {
                                     <button
                                         key={key}
                                         onClick={() => setFormat(key)}
-                                        className={`text-left p-4 rounded-xl border transition-all flex gap-3 ${format === key ? 'bg-primary/10 border-primary/40 shadow-[0_0_15px_rgba(74,222,128,0.08)]' : 'bg-black/20 border-white/5 hover:bg-white/5'}`}
+                                        className={`text-left p-4 rounded-xl border transition-all flex gap-3 ${format === key ? 'bg-primary/10 border-primary/40 shadow-[0_0_15px_hsl(var(--primary)/0.08)]' : 'bg-black/20 border-white/5 hover:bg-white/5'}`}
                                     >
                                         <Icon size={20} className={format === key ? 'text-primary shrink-0 mt-0.5' : 'text-muted-foreground shrink-0 mt-0.5'} />
                                         <span className="min-w-0">
@@ -318,6 +411,53 @@ export function TournamentSetup({ onStart }) {
                                     <Stepper value={rounds} setValue={setRounds} min={1} max={50} />
                                 </Field>
                             )}
+                            {format === 'sprt' && (
+                                <>
+                                    <Field label="New engine (the one being tested)" hint="Click the star on an engine below to choose it.">
+                                        <select
+                                            value={hero || ''}
+                                            onChange={(e) => setHero(e.target.value)}
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-foreground focus:border-primary outline-none"
+                                        >
+                                            {selected.length === 0 && <option value="">Select 2 engines below</option>}
+                                            {selectedEngines.map((e) => <option key={e.path} value={e.path}>{engineName(e)}</option>)}
+                                        </select>
+                                    </Field>
+                                    <Field label="Base engine" hint="What the new engine is compared against.">
+                                        <div className="w-full bg-black/20 border border-white/5 rounded-xl px-3 py-2.5 text-sm text-foreground truncate">
+                                            {baseEngine ? engineName(baseEngine) : <span className="text-muted-foreground">{selected.length > 2 ? 'Select only 2 engines' : 'Select a second engine'}</span>}
+                                        </div>
+                                    </Field>
+                                    <div className="md:col-span-2 space-y-2">
+                                        <span className="block text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Hypotheses (Elo)</span>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {SPRT_PRESETS.map((pr) => (
+                                                <button
+                                                    key={pr.id}
+                                                    type="button"
+                                                    onClick={() => setSprtCfg((c) => ({ ...c, elo0: pr.elo0, elo1: pr.elo1 }))}
+                                                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${sprtCfg.elo0 === pr.elo0 && sprtCfg.elo1 === pr.elo1 ? 'bg-primary/10 border-primary/40 text-primary' : 'bg-black/20 border-white/5 text-muted-foreground hover:text-foreground'}`}
+                                                >
+                                                    {pr.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                            <NumField label="Elo0 (H0)" value={sprtCfg.elo0} step={0.5} onChange={(v) => setSprtCfg((c) => ({ ...c, elo0: v }))} />
+                                            <NumField label="Elo1 (H1)" value={sprtCfg.elo1} step={0.5} onChange={(v) => setSprtCfg((c) => ({ ...c, elo1: v }))} />
+                                            <NumField label="Alpha" value={sprtCfg.alpha} step={0.01} min={0.001} max={0.5} onChange={(v) => setSprtCfg((c) => ({ ...c, alpha: v }))} />
+                                            <NumField label="Beta" value={sprtCfg.beta} step={0.01} min={0.001} max={0.5} onChange={(v) => setSprtCfg((c) => ({ ...c, beta: v }))} />
+                                            <NumField label="Max games" value={sprtCfg.maxGames} step={100} min={2} max={100000} onChange={(v) => setSprtCfg((c) => ({ ...c, maxGames: v }))} />
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground/80 leading-snug flex gap-1.5">
+                                            <Info size={12} className="shrink-0 mt-0.5 text-primary" />
+                                            <span>
+                                                H0: the new engine gains at most {sprtCfg.elo0} Elo. H1: it gains at least {sprtCfg.elo1}. The test plays game pairs (same opening, colours swapped) until one hypothesis is accepted. Alpha and beta are the chances of a wrong verdict either way.
+                                            </span>
+                                        </p>
+                                    </div>
+                                </>
+                            )}
                             {(format === 'elimination' || format === 'double_elimination') && (
                                 <div className="md:col-span-2 text-xs text-muted-foreground bg-black/20 border border-white/5 rounded-xl p-3 flex gap-2">
                                     <Info size={14} className="shrink-0 mt-0.5 text-primary" />
@@ -350,12 +490,12 @@ export function TournamentSetup({ onStart }) {
                             />
                         </div>
                         {engines.length === 0 ? (
-                            <p className="text-sm text-muted-foreground p-6 text-center border border-dashed border-white/10 rounded-xl">No engines found. Add some in Local Engines.</p>
+                            <p className="text-sm text-muted-foreground p-6 text-center border border-dashed border-white/10 rounded-xl">No engines found. Add some in Engines &amp; Books.</p>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
                                 {filtered.map((e) => {
                                     const on = selected.includes(e.path);
-                                    const isHero = format === 'gauntlet' && hero === e.path;
+                                    const isHero = (format === 'gauntlet' || format === 'sprt') && hero === e.path;
                                     const r = ratingOf(e.path);
                                     const tier = getRatingTier(r);
                                     return (
@@ -374,13 +514,13 @@ export function TournamentSetup({ onStart }) {
                                                     <span className={`text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${tier.badgeClass}`}>{tier.title}</span>
                                                 </div>
                                             </div>
-                                            {format === 'gauntlet' && on && (
+                                            {(format === 'gauntlet' || format === 'sprt') && on && (
                                                 <button
                                                     onClick={(ev) => {
                                                         ev.stopPropagation();
                                                         setHero(e.path);
                                                     }}
-                                                    title={isHero ? 'Main engine' : 'Make this the main engine'}
+                                                    title={format === 'sprt' ? (isHero ? 'New engine (being tested)' : 'Make this the new engine') : isHero ? 'Main engine' : 'Make this the main engine'}
                                                     className={`p-1.5 rounded-lg shrink-0 ${isHero ? 'text-yellow-400 bg-yellow-500/10' : 'text-muted-foreground/40 hover:text-yellow-400 hover:bg-white/5'}`}
                                                 >
                                                     {isHero ? <Crown size={15} /> : <Star size={15} />}
@@ -396,20 +536,23 @@ export function TournamentSetup({ onStart }) {
 
                 {/* ---------------- settings column ---------------- */}
                 <div className="space-y-6 min-w-0 xl:sticky xl:top-0">
-                    <Section title="Time control" icon={<Clock size={16} className="text-primary" />}>
-                        <div className="grid grid-cols-2 gap-2">
-                            {Object.entries(TIME_PRESETS).map(([k, p]) => (
-                                <button
-                                    key={k}
-                                    onClick={() => setTcType(k)}
-                                    className={`px-3 py-2 rounded-xl border text-left transition-all ${tcType === k ? 'bg-primary text-black border-primary' : 'bg-black/20 border-white/5 hover:bg-white/5'}`}
-                                >
-                                    <span className="block text-sm font-bold">{p.label}</span>
-                                    <span className={`block text-[11px] ${tcType === k ? 'text-black/70' : 'text-muted-foreground'}`}>{p.sub}</span>
-                                </button>
-                            ))}
-                        </div>
-                        {tcType === 'custom' && (
+                    <Section title="Search limit" icon={<Clock size={16} className="text-primary" />}>
+                        <Segmented value={limitMode} onChange={setLimitMode} options={LIMIT_MODES} />
+                        {limitMode === 'clock' && (
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                                {Object.entries(TIME_PRESETS).map(([k, p]) => (
+                                    <button
+                                        key={k}
+                                        onClick={() => setTcType(k)}
+                                        className={`px-3 py-2 rounded-xl border text-left transition-all ${tcType === k ? 'bg-primary text-black border-primary' : 'bg-black/20 border-white/5 hover:bg-white/5'}`}
+                                    >
+                                        <span className="block text-sm font-bold">{p.label}</span>
+                                        <span className={`block text-[11px] ${tcType === k ? 'text-black/70' : 'text-muted-foreground'}`}>{p.sub}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {limitMode === 'clock' && tcType === 'custom' && (
                             <div className="mt-3 grid grid-cols-2 gap-3">
                                 <Field label="Base time">
                                     <div className="flex gap-1">
@@ -425,6 +568,24 @@ export function TournamentSetup({ onStart }) {
                                 </Field>
                             </div>
                         )}
+                        {limitMode === 'movetime' && (
+                            <div className="mt-3">
+                                <NumField label="Seconds per move" value={moveTimeSec} step={0.1} min={0.01} max={3600} onChange={setMoveTimeSec} />
+                                <p className="text-[11px] text-muted-foreground mt-2 leading-snug">Every move gets the same time, no clock.</p>
+                            </div>
+                        )}
+                        {limitMode === 'depth' && (
+                            <div className="mt-3">
+                                <NumField label="Search depth (plies)" value={depth} step={1} min={1} max={99} onChange={setDepth} />
+                                <p className="text-[11px] text-muted-foreground mt-2 leading-snug">Each engine searches to this depth on every move. Depth means different things in different engines, so this suits comparing versions of the same engine.</p>
+                            </div>
+                        )}
+                        {limitMode === 'nodes' && (
+                            <div className="mt-3">
+                                <NumField label="Nodes per move" value={nodes} step={1000} min={1} max={1000000000} onChange={setNodes} />
+                                <p className="text-[11px] text-muted-foreground mt-2 leading-snug">Each move searches this many positions, so results don't depend on how busy your PC is.</p>
+                            </div>
+                        )}
                     </Section>
 
                     <Section title="Openings" icon={<BookOpen size={16} className="text-primary" />}>
@@ -433,7 +594,8 @@ export function TournamentSetup({ onStart }) {
                             onChange={setOpeningMode}
                             options={[
                                 ['builtin', 'Balanced set'],
-                                ['book', 'Opening book'],
+                                ['file', 'EPD / PGN'],
+                                ['book', 'Book (.bin)'],
                                 ['startpos', 'Start position'],
                             ]}
                         />
@@ -441,7 +603,31 @@ export function TournamentSetup({ onStart }) {
                             {openingMode === 'builtin' && '50 balanced positions from popular openings, so repeated games don’t all start the same way.'}
                             {openingMode === 'book' && 'A line from the book is picked for each match and played in both games.'}
                             {openingMode === 'startpos' && 'Every game starts from the normal starting position.'}
+                            {openingMode === 'file' && 'Positions from an EPD file or lines from a PGN file (like the 8-move or UHO suites). Each one is played twice, once with each engine as White.'}
                         </p>
+                        {openingMode === 'file' && (
+                            <div className="mt-3 space-y-3">
+                                <button onClick={browseOpenings} className="w-full px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm flex items-center gap-2 min-w-0">
+                                    <FolderOpen size={14} className="shrink-0" />
+                                    <span className="truncate">{openingFile ? openingFile.split(/[\\/]/).pop() : 'Choose an .epd or .pgn file'}</span>
+                                </button>
+                                {openingInfo && openingInfo.loading && <p className="text-[11px] text-muted-foreground">Reading the file…</p>}
+                                {openingInfo && openingInfo.ok && (
+                                    <p className="text-[11px] text-primary flex items-center gap-1.5">
+                                        <Check size={12} /> {openingInfo.count.toLocaleString()} {openingInfo.format === 'epd' ? (openingInfo.count === 1 ? 'position' : 'positions') : openingInfo.count === 1 ? 'opening line' : 'opening lines'} ({openingInfo.format.toUpperCase()})
+                                    </p>
+                                )}
+                                {openingInfo && openingInfo.ok === false && (
+                                    <p className="text-[11px] text-red-400 flex items-center gap-1.5"><AlertCircle size={12} /> {openingInfo.error}</p>
+                                )}
+                                <Field label="Order">
+                                    <Segmented value={openingOrder} onChange={setOpeningOrder} options={[['random', 'Shuffled'], ['sequential', 'In file order']]} />
+                                </Field>
+                                {openingInfo && openingInfo.format === 'pgn' && (
+                                    <NumField label="Moves from each line (0 = all, up to 30)" value={openingPlies} step={1} min={0} max={30} onChange={setOpeningPlies} />
+                                )}
+                            </div>
+                        )}
                         {openingMode === 'book' && (
                             <div className="mt-3 space-y-2">
                                 <select
@@ -460,6 +646,30 @@ export function TournamentSetup({ onStart }) {
                         )}
                     </Section>
 
+                    <Section title="Adjudication" icon={<Gavel size={16} className="text-primary" />}>
+                        <div className="space-y-2.5">
+                            <AdjRow
+                                on={adjudication.resign.enabled}
+                                onToggle={(v) => setAdjudication((a) => ({ ...a, resign: { ...a.resign, enabled: v } }))}
+                                title="Resign"
+                                text={<>Both engines agree a side is down at least <Inline value={adjudication.resign.score} onChange={(v) => setAdjudication((a) => ({ ...a, resign: { ...a.resign, score: v } }))} min={100} max={100000} step={50} suffix="cp" /> for <Inline value={adjudication.resign.moves} onChange={(v) => setAdjudication((a) => ({ ...a, resign: { ...a.resign, moves: v } }))} min={1} max={100} /> moves each.</>}
+                            />
+                            <AdjRow
+                                on={adjudication.draw.enabled}
+                                onToggle={(v) => setAdjudication((a) => ({ ...a, draw: { ...a.draw, enabled: v } }))}
+                                title="Draw"
+                                text={<>From move <Inline value={adjudication.draw.after} onChange={(v) => setAdjudication((a) => ({ ...a, draw: { ...a.draw, after: v } }))} min={1} max={1000} />, both scores stay within ±<Inline value={adjudication.draw.score} onChange={(v) => setAdjudication((a) => ({ ...a, draw: { ...a.draw, score: v } }))} min={0} max={1000} suffix="cp" /> for <Inline value={adjudication.draw.moves} onChange={(v) => setAdjudication((a) => ({ ...a, draw: { ...a.draw, moves: v } }))} min={1} max={200} /> moves each.</>}
+                            />
+                            <AdjRow
+                                on={adjudication.maxMoves.enabled}
+                                onToggle={(v) => setAdjudication((a) => ({ ...a, maxMoves: { ...a.maxMoves, enabled: v } }))}
+                                title="Move limit"
+                                text={<>A game still going after <Inline value={adjudication.maxMoves.moves} onChange={(v) => setAdjudication((a) => ({ ...a, maxMoves: { ...a.maxMoves, moves: v } }))} min={10} max={2000} step={10} /> moves is a draw.</>}
+                            />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">Ends games that are already decided, so tests finish sooner. Scores are what the engines report for their own moves.</p>
+                    </Section>
+
                     <Section title="Games at once" icon={<Cpu size={16} className="text-primary" />}>
                         <Stepper value={concurrency} setValue={setConcurrency} min={1} max={cpus ? Math.max(1, Math.min(16, cpus)) : 8} />
                         <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
@@ -472,12 +682,14 @@ export function TournamentSetup({ onStart }) {
                         <div className="grid grid-cols-3 gap-2 text-center">
                             <Stat label="Engines" value={selected.length} />
                             <Stat label="Matches" value={plan.matches ? `${plan.atLeast ? '≥' : ''}${plan.matches}` : '–'} />
-                            <Stat label="Games" value={plan.games ? `${plan.atLeast ? '≥' : ''}${plan.games}` : '–'} />
+                            <Stat label={plan.upTo ? 'Up to' : 'Games'} value={plan.games ? `${plan.atLeast ? '≥' : ''}${plan.games}` : '–'} />
                         </div>
                         {plan.games > 0 && (
                             <p className="text-xs text-muted-foreground text-center">
                                 {format === 'gauntlet' && `${selected.length - 1} opponent${selected.length === 2 ? '' : 's'} × ${matchesPerPairing} match${matchesPerPairing === 1 ? '' : 'es'} × 2 games. `}
-                                Roughly {fmtMinutes(est)} at {concurrency} game{concurrency === 1 ? '' : 's'} at a time.
+                                {format === 'sprt'
+                                    ? `Usually stops long before the limit. At most about ${fmtMinutes(est)} at ${concurrency} game${concurrency === 1 ? '' : 's'} at a time.`
+                                    : `Roughly ${fmtMinutes(est)} at ${concurrency} game${concurrency === 1 ? '' : 's'} at a time.`}
                             </p>
                         )}
                         <button
@@ -488,9 +700,7 @@ export function TournamentSetup({ onStart }) {
                             <Play size={18} className="fill-current" /> Start {FORMATS[format].title}
                         </button>
                         {!canStart && (
-                            <p className="text-[11px] text-center text-muted-foreground">
-                                {selected.length < 2 ? 'Select at least 2 engines.' : openingMode === 'book' && !book ? 'Choose an opening book.' : 'Pick the main engine.'}
-                            </p>
+                            <p className="text-[11px] text-center text-muted-foreground">{startHint}</p>
                         )}
                     </div>
                 </div>
@@ -501,7 +711,7 @@ export function TournamentSetup({ onStart }) {
                 <div className="flex-1 min-w-0 text-xs text-muted-foreground truncate">
                     {plan.games
                         ? <><span className="text-foreground font-semibold">{FORMATS[format].title}</span> · {selected.length} engines · {plan.atLeast ? '≥' : ''}{plan.matches} matches · {plan.atLeast ? '≥' : ''}{plan.games} games · ~{fmtMinutes(est)}</>
-                        : selected.length < 2 ? 'Select at least 2 engines.' : ''}
+                        : startHint}
                 </div>
                 <button onClick={handleStart} disabled={!canStart} className="px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 bg-primary text-black hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed shrink-0">
                     <Play size={16} className="fill-current" /> Start
@@ -591,6 +801,82 @@ export function Segmented({ value, onChange, options }) {
                     {label}
                 </button>
             ))}
+        </div>
+    );
+}
+
+// A number box that lets you type freely and only keeps the value inside min..max when you
+// leave it (clamping on every keystroke turned "700" into 100 → 1000 → 10000).
+function useDraftNumber(value, onChange, min, max) {
+    const [draft, setDraft] = useState(String(value));
+    useEffect(() => setDraft(String(value)), [value]);
+    const clamp = (v) => Math.max(min ?? -Infinity, Math.min(max ?? Infinity, v));
+    return {
+        value: draft,
+        onChange: (e) => {
+            setDraft(e.target.value);
+            const v = Number(e.target.value);
+            if (e.target.value.trim() !== '' && Number.isFinite(v) && v >= (min ?? -Infinity) && v <= (max ?? Infinity)) onChange(v);
+        },
+        onBlur: () => {
+            const v = Number(draft);
+            const next = draft.trim() === '' || !Number.isFinite(v) ? value : clamp(v);
+            setDraft(String(next));
+            if (next !== value) onChange(next);
+        },
+    };
+}
+
+export function NumField({ label, value, onChange, step = 1, min, max }) {
+    const box = useDraftNumber(value, onChange, min, max);
+    return (
+        <label className="block min-w-0">
+            <span className="block text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5 truncate">{label}</span>
+            <input
+                type="number"
+                step={step}
+                min={min}
+                max={max}
+                {...box}
+                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm font-mono focus:border-primary outline-none"
+            />
+        </label>
+    );
+}
+
+function Inline({ value, onChange, min, max, step = 1, suffix }) {
+    const box = useDraftNumber(value, onChange, min, max);
+    return (
+        <span className="inline-flex items-baseline gap-0.5">
+            <input
+                type="number"
+                min={min}
+                max={max}
+                step={step}
+                onClick={(e) => e.stopPropagation()}
+                {...box}
+                className="w-14 bg-black/40 border border-white/10 rounded-md px-1.5 py-0.5 text-xs font-mono text-foreground focus:border-primary outline-none"
+            />
+            {suffix && <span className="text-[10px] text-muted-foreground">{suffix}</span>}
+        </span>
+    );
+}
+
+export function AdjRow({ on, onToggle, title, text }) {
+    return (
+        <div className={`flex gap-3 p-3 rounded-xl border transition-colors ${on ? 'bg-primary/[0.05] border-primary/20' : 'bg-black/20 border-white/5'}`}>
+            <button
+                type="button"
+                onClick={() => onToggle(!on)}
+                className={`w-9 h-5 rounded-full relative shrink-0 mt-0.5 transition-colors ${on ? 'bg-primary' : 'bg-white/10'}`}
+                aria-label={`${title} adjudication`}
+            >
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
+            </button>
+            <div className={`min-w-0 text-xs leading-relaxed ${on ? 'text-foreground' : 'text-muted-foreground'}`}>
+                <span className="font-bold mr-1">{title}.</span>
+                {text}
+            </div>
         </div>
     );
 }

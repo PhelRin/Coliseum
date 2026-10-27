@@ -1,5 +1,9 @@
 const EventEmitter = require('events');
+const fs = require('fs');
+const path = require('path');
 const { Chess } = require('chess.js');
+const { OpeningSuite } = require('./opening-suite');
+const { sprt, normaliseSprt } = require('./sprt');
 const { PolyglotBook } = require('./polyglot');
 const { openingFor } = require('./openings');
 const { eloDiff, performance } = require('./ratings');
@@ -16,6 +20,8 @@ const { eloDiff, performance } = require('./ratings');
 //   swiss               R rounds; each round pairs engines on similar scores, one match each
 //   elimination         knockout bracket, each round a match (tiebreaks if level)
 //   double_elimination  knockout with a losers' bracket and a grand final (plus reset)
+//   sprt                two engines play game pairs until an SPRT decides whether the new one
+//                       is stronger (or a game limit is reached)
 //
 // Several games can run at once (settings.concurrency); the screen shows all of them.
 // =============================================================================================
@@ -53,6 +59,8 @@ class TournamentManager extends EventEmitter {
         this.arbiters = new Map(); // slot -> arbiter
         this.book = null;
         this.linked = null; // LinkedEngines, set by main
+        this.dataDir = null; // user data folder (SPRT games are written to a file there)
+        this.suite = null; // opening file, when one is used
     }
 
     send(channel, data) {
@@ -62,6 +70,13 @@ class TournamentManager extends EventEmitter {
     // ------------------------------------------------------------------ lifecycle
     async startTournament(config) {
         this.stopArbiters();
+        // the last finished SPRT's games are in the archive by now: drop its working file
+        const prev = this.state;
+        if (prev && prev.finished && prev.sprt && prev.sprt.pgnFile) {
+            try {
+                fs.rmSync(prev.sprt.pgnFile, { force: true });
+            } catch (e) { /* in use or gone */ }
+        }
         const cfg = normaliseConfig(config);
         this.state = {
             config: cfg,
@@ -80,6 +95,7 @@ class TournamentManager extends EventEmitter {
         else if (cfg.type === 'round_robin') this.buildRoundRobin(engines);
         else if (cfg.type === 'swiss') this.startSwissRound();
         else if (cfg.type === 'double_elimination') this.buildDoubleElimination(engines);
+        else if (cfg.type === 'sprt') this.buildSprt(engines);
         else this.buildElimination(engines);
 
         this.active = true;
@@ -127,6 +143,7 @@ class TournamentManager extends EventEmitter {
         this.active = true;
         await this.loadBook();
         this.pinLinkedEngines();
+        if (this.state.config.type === 'sprt' && this.state.sprt && this.state.matches[0]) this.topUpSprt(this.state.matches[0]);
         this.saveState();
         this.sendUpdate();
         this.pump();
@@ -182,10 +199,20 @@ class TournamentManager extends EventEmitter {
 
     async loadBook() {
         this.book = null;
+        this.suite = null;
         const o = this.state.config.openings;
         if (o.mode === 'book' && o.book) {
             const b = new PolyglotBook();
             if (await b.load(o.book)) this.book = b;
+        }
+        if (o.mode === 'file' && o.file) {
+            try {
+                this.suite = new OpeningSuite(o.file, { order: o.order, plies: o.plies, seed: this.state.seed });
+            } catch (e) {
+                console.error('[Tournament] Opening file:', e.message);
+                this.state.warning = `Could not load the opening file (${e.message}). The balanced set of openings is used instead.`;
+                this.send('tournament-warning', this.state.warning);
+            }
         }
     }
 
@@ -254,6 +281,95 @@ class TournamentManager extends EventEmitter {
         };
         if (cfg.order === 'sequential') opponents.forEach((opp) => { for (let r = 0; r < n; r++) push(opp, r); });
         else for (let r = 0; r < n; r++) opponents.forEach((opp) => push(opp, r));
+    }
+
+    // ------------------------------------------------------------------ SPRT
+    buildSprt(engines) {
+        const [test, base] = engines;
+        const m = this.addMatch({ a: ref(test), b: ref(base), round: 'SPRT' });
+        const st = this.state;
+        st.sprt = {
+            penta: [0, 0, 0, 0, 0], // pairs scoring 0, 0.5, 1, 1.5, 2 for the new engine
+            wdl: { w: 0, d: 0, l: 0 }, // games, from the new engine's side
+            games: 0,
+            result: null, // 'H1' | 'H0' | 'limit'
+            recent: [],
+            pgnFile: this.dataDir ? path.join(this.dataDir, 'tournaments', `sprt-${st.startedAt}.pgn`) : null,
+        };
+        Object.assign(st.sprt, sprt(st.sprt.penta, st.config.sprt), { result: null });
+        this.topUpSprt(m);
+    }
+
+    // keep enough game pairs queued to fill every slot, up to the game limit
+    topUpSprt(m) {
+        const st = this.state;
+        const cfg = st.config;
+        const live = () => st.games.filter((g) => g.matchId === m.id && (g.status === 'pending' || g.status === 'playing')).length;
+        const queued = () => st.games.filter((g) => g.matchId === m.id && g.status === 'pending').length;
+        while (!st.sprt.result && queued() < cfg.concurrency + 2 && st.sprt.games + live() + 2 <= cfg.sprt.maxGames) this.addPair(m);
+    }
+
+    onSprtGame(game, result) {
+        const st = this.state;
+        const m = st.matches[game.matchId];
+        const sA = game.aIsWhite ? scoreOf(result.winner) : 1 - scoreOf(result.winner);
+        const S = st.sprt;
+        S.games += 1;
+        if (sA === 1) S.wdl.w++;
+        else if (sA === 0) S.wdl.l++;
+        else S.wdl.d++;
+        // games go to a file as they finish; the saved state stays small
+        if (result.pgn && S.pgnFile) {
+            try {
+                fs.mkdirSync(path.dirname(S.pgnFile), { recursive: true });
+                fs.appendFileSync(S.pgnFile, result.pgn.trim() + '\n\n');
+                game.result.pgn = '';
+            } catch (e) {
+                console.error('[SPRT] Could not write the game:', e.message);
+            }
+        }
+        const white = game.aIsWhite ? m.a : m.b;
+        const black = game.aIsWhite ? m.b : m.a;
+        S.recent.unshift({ white: white.name, black: black.name, winner: result.winner, reason: result.reason, plies: result.plies || 0 });
+        S.recent = S.recent.slice(0, 30);
+
+        // a finished pair counts towards the test
+        const partner = st.games.find((g) => g !== game && g.matchId === game.matchId && g.opening.index === game.opening.index);
+        if (partner && partner.status === 'done' && partner.result) {
+            const sB = partner.aIsWhite ? scoreOf(partner.result.winner) : 1 - scoreOf(partner.result.winner);
+            S.penta[Math.round((sA + sB) * 2)] += 1;
+            st.games = st.games.filter((g) => g !== game && g !== partner);
+            m.games = st.games.filter((g) => g.matchId === m.id).map((g) => g.id);
+        }
+        const wasLimit = S.result === 'limit';
+        const r = sprt(S.penta, st.config.sprt);
+        Object.assign(S, r);
+        if (r.result) {
+            this.endSprt(m);
+            return;
+        }
+        S.result = wasLimit || S.games >= st.config.sprt.maxGames ? 'limit' : null;
+        this.topUpSprt(m);
+        const live = st.games.some((g) => g.matchId === m.id && (g.status === 'pending' || g.status === 'playing'));
+        if (!live) {
+            if (!S.result) S.result = 'limit';
+            this.endSprt(m);
+        }
+    }
+
+    // decided: games still running are stopped and not counted
+    endSprt(m) {
+        const st = this.state;
+        for (const g of st.games) {
+            if (g.matchId === m.id && (g.status === 'pending' || g.status === 'playing')) g.status = 'cancelled';
+        }
+        st.games = st.games.filter((g) => g.status !== 'cancelled');
+        m.games = st.games.filter((g) => g.matchId === m.id).map((g) => g.id);
+        this.stopArbiters();
+        m.status = 'done';
+        const { w, l } = st.sprt.wdl;
+        m.winner = w > l ? 'a' : l > w ? 'b' : 'draw';
+        m.points = { a: st.sprt.wdl.w + st.sprt.wdl.d / 2, b: st.sprt.wdl.l + st.sprt.wdl.d / 2 };
     }
 
     buildRoundRobin(engines) {
@@ -453,7 +569,11 @@ class TournamentManager extends EventEmitter {
     async openingFor(game) {
         const o = this.state.config.openings;
         if (game.opening.fen || game.opening.moves) return game.opening;
-        if (o.mode === 'builtin') {
+        if (o.mode === 'file' && this.suite) {
+            const op = this.suite.get(game.opening.index);
+            game.opening.fen = op.fen || undefined;
+            game.opening.moves = op.moves;
+        } else if (o.mode === 'builtin' || o.mode === 'file') {
             game.opening.fen = openingFor(game.opening.index, this.state.seed);
         } else if (o.mode === 'book' && this.book) {
             game.opening.moves = sampleBookLine(this.book);
@@ -492,18 +612,20 @@ class TournamentManager extends EventEmitter {
         const opening = await this.openingFor(game);
         const tc = this.state.config.settings;
         const cfg = this.state.config;
+        const sideTc = sideTimeControl(tc);
         const settings = {
             initial: tc.initial,
             inc: tc.inc,
-            whiteTimeControl: tc.type === 'unlimited' ? { type: 'unlimited' } : tc.movetime ? { movetime: tc.movetime } : undefined,
-            blackTimeControl: tc.type === 'unlimited' ? { type: 'unlimited' } : tc.movetime ? { movetime: tc.movetime } : undefined,
+            whiteTimeControl: sideTc,
+            blackTimeControl: sideTc,
+            adjudication: cfg.adjudication || undefined,
             startFen: opening.fen || undefined,
             openingMoves: opening.moves && opening.moves.length ? opening.moves : undefined,
             launchPaths: this.launchPathsFor(white.path, black.path),
             moveDelay: cfg.concurrency > 1 ? 20 : 80,
             meta: {
                 event: `Coliseum ${formatName(cfg.type)}`,
-                round: `${m.label}.${m.games.indexOf(game.id) + 1}`,
+                round: cfg.type === 'sprt' ? String(game.id) : `${m.label}.${m.games.indexOf(game.id) + 1}`,
                 whiteElo: white.elo,
                 blackElo: black.elo,
             },
@@ -520,7 +642,17 @@ class TournamentManager extends EventEmitter {
         }
         if (this.arbiters.get(slot) === arbiter) this.arbiters.delete(slot);
         if (!this.active) return;
+        if (game.status !== 'playing') return; // cancelled (an SPRT was decided meanwhile)
 
+        if (!result && this.state.config.type === 'sprt') {
+            // an SPRT must only count real games: stop the test (it can be resumed) instead
+            this.state.warning = `${white.name} or ${black.name} could not be started, so the SPRT was paused. Check the engines in Engines & Books, then resume the test from the lobby.`;
+            this.send('tournament-warning', this.state.warning);
+            game.status = 'pending';
+            game.slot = null;
+            this.stopTournament();
+            return;
+        }
         if (!result) {
             // the engines could not be started: count it as a loss for nobody, retry later? No:
             // score it as a draw so a broken engine can't stall the whole tournament.
@@ -534,6 +666,13 @@ class TournamentManager extends EventEmitter {
         game.status = 'done';
         game.slot = null;
         game.result = { winner: result.winner, reason: result.reason, pgn: result.pgn, plies: result.plies || 0 };
+        if (this.state.config.type === 'sprt') {
+            this.onSprtGame(game, result);
+            this.saveState();
+            this.sendUpdate();
+            setTimeout(() => this.pump(), 300);
+            return;
+        }
         const sWhite = scoreOf(result.winner);
         const sA = game.aIsWhite ? sWhite : 1 - sWhite;
         m.points.a += sA;
@@ -631,8 +770,10 @@ class TournamentManager extends EventEmitter {
                 result: g.result ? { winner: g.result.winner, reason: g.result.reason, plies: g.result.plies } : null,
             };
         });
-        const doneGames = st.games.filter((g) => g.status === 'done').length;
+        const doneGames = st.sprt ? st.sprt.games : st.games.filter((g) => g.status === 'done').length;
         return {
+            sprt: st.sprt ? { ...st.sprt, pgnFile: undefined, ...st.config.sprt } : null,
+            warning: st.warning || null,
             config: st.config,
             matches: st.matches,
             games,
@@ -650,6 +791,13 @@ class TournamentManager extends EventEmitter {
 
     getCombinedPgn() {
         if (!this.state) return '';
+        if (this.state.sprt && this.state.sprt.pgnFile) {
+            try {
+                return fs.readFileSync(this.state.sprt.pgnFile, 'utf8').trim();
+            } catch (e) {
+                return '';
+            }
+        }
         return this.state.games
             .filter((g) => g.result && g.result.pgn)
             .map((g) => g.result.pgn)
@@ -674,12 +822,44 @@ function normaliseConfig(config) {
     const legacyBook = c.settings.commonBook;
     c.openings = c.openings || (legacyBook ? { mode: 'book', book: legacyBook } : { mode: 'builtin' });
     if (c.openings.mode === 'book' && !c.openings.book) c.openings = { mode: 'builtin' };
+    if (c.openings.mode === 'file') {
+        if (!c.openings.file) c.openings = { mode: 'builtin' };
+        else c.openings = { mode: 'file', file: c.openings.file, order: c.openings.order === 'random' ? 'random' : 'sequential', plies: Math.max(0, parseInt(c.openings.plies, 10) || 0) };
+    }
+    c.adjudication = normaliseAdjudication(c.adjudication);
+    if (c.type === 'sprt') {
+        c.engines = c.engines.slice(0, 2);
+        c.sprt = normaliseSprt(c.sprt);
+    }
     if (c.type === 'gauntlet' && !c.engines.some((e) => e.path === c.hero)) c.hero = c.engines[0] && c.engines[0].path;
     return c;
 }
 
+function normaliseAdjudication(a) {
+    if (!a) return null;
+    const n = (v, d, lo, hi) => Math.max(lo, Math.min(hi, Number.isFinite(Number(v)) ? Number(v) : d));
+    const out = {
+        resign: { enabled: !!(a.resign && a.resign.enabled), score: n(a.resign && a.resign.score, 700, 100, 100000), moves: n(a.resign && a.resign.moves, 4, 1, 100) },
+        draw: { enabled: !!(a.draw && a.draw.enabled), after: n(a.draw && a.draw.after, 40, 1, 1000), score: n(a.draw && a.draw.score, 10, 0, 1000), moves: n(a.draw && a.draw.moves, 8, 1, 200) },
+        maxMoves: { enabled: !!(a.maxMoves && a.maxMoves.enabled), moves: n(a.maxMoves && a.maxMoves.moves, 200, 10, 2000) },
+    };
+    return out.resign.enabled || out.draw.enabled || out.maxMoves.enabled ? out : null;
+}
+
+// the per-side time control the arbiter wants: unlimited, a fixed time / depth / node count
+// per move, or undefined for a clock (initial + increment)
+function sideTimeControl(tc) {
+    if (!tc) return undefined;
+    if (tc.type === 'unlimited') return { type: 'unlimited' };
+    if (tc.movetime) return { movetime: tc.movetime };
+    if (tc.depth) return { depth: tc.depth };
+    if (tc.nodes) return { nodes: tc.nodes };
+    return undefined;
+}
+
 function formatName(type) {
     return {
+        sprt: 'SPRT Test',
         gauntlet: 'Gauntlet',
         round_robin: 'Round Robin',
         swiss: 'Swiss',
@@ -766,6 +946,7 @@ function sampleBookLine(book) {
 }
 
 function estimateTotalGames(st) {
+    if (st.config.type === 'sprt') return st.config.sprt.maxGames;
     const real = st.games.length;
     if (st.config.type === 'swiss') {
         const n = st.config.engines.length;
@@ -781,6 +962,17 @@ function estimateTotalGames(st) {
 
 function computeStandings(st) {
     const cfg = st.config;
+    if (cfg.type === 'sprt' && st.sprt) {
+        const { w, d, l } = st.sprt.wdl;
+        const [a, b] = cfg.engines;
+        const row = (e, wins, losses) => ({
+            name: e.name, path: e.path, played: w + d + l, wins, draws: d, losses, points: wins + d / 2,
+            matchWins: 0, matchDraws: 0, matchLosses: 0, buchholz: 0, sonnebornBerger: 0,
+            scorePct: w + d + l ? ((wins + d / 2) / (w + d + l)) * 100 : 0, vs: [],
+        });
+        const rows = [row(a, w, l), row(b, l, w)].sort((x, y) => y.points - x.points);
+        return { rows };
+    }
     const rows = {};
     cfg.engines.forEach((e) => {
         rows[e.path] = { name: e.name, path: e.path, played: 0, wins: 0, draws: 0, losses: 0, points: 0, matchWins: 0, matchDraws: 0, matchLosses: 0, opponents: [], vs: {} };

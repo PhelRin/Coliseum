@@ -1,4 +1,5 @@
 const UciEngine = require('./uci');
+const { resolveProtocol } = require('./engine-protocol');
 
 // Live (infinite) analysis for the Analysis Board.
 //
@@ -39,9 +40,14 @@ class AnalysisManager {
         if (this.active) await this.stop();
 
         console.log(`[Analysis] Starting engine: ${enginePath}`);
+        if ((await resolveProtocol(enginePath)) === 'xboard') {
+            this.send('analysis-error', 'This is a WinBoard engine. Analysis needs a UCI engine.');
+            return { multiPV: 1 };
+        }
         const engine = new UciEngine(enginePath, 'AnalysisEngine');
         engine.verbose = false;
         this.engine = engine;
+        engine.on('error', (err) => console.error('[Analysis] Engine could not run:', err && err.message));
 
         try {
             engine.start();

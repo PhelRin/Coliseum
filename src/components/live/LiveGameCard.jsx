@@ -47,7 +47,7 @@ export function LiveGameCard({ game, now, big = false, onClick, selected = false
     return (
         <div
             onClick={onClick}
-            className={`flex flex-col min-w-0 rounded-2xl border bg-card/80 p-2 gap-1 transition-colors ${big ? 'h-full' : ''} ${onClick ? 'cursor-pointer hover:border-primary/40' : ''} ${selected ? 'border-primary/50 shadow-[0_0_20px_rgba(74,222,128,0.08)]' : 'border-white/5'}`}
+            className={`flex flex-col min-w-0 rounded-2xl border bg-card/80 p-2 gap-1 transition-colors ${big ? 'h-full' : ''} ${onClick ? 'cursor-pointer hover:border-primary/40' : ''} ${selected ? 'border-primary/50 shadow-[0_0_20px_hsl(var(--primary)/0.08)]' : 'border-white/5'}`}
         >
             {label && <div className="px-2 pt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground truncate">{label}</div>}
             <PlayerStrip player={game.black} color="b" clock={bClock} active={playing && turn === 'b'} result={game.status === 'ended' ? game.result : null} score={formatScore(bInfo, 'b')} depth={bInfo.depth} showScore={big || size.width > 300} />

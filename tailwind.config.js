@@ -13,6 +13,7 @@ module.exports = {
                 "card-foreground": "hsl(var(--card-foreground))",
                 primary: "hsl(var(--primary))",
                 "primary-foreground": "hsl(var(--primary-foreground))",
+                primary2: "hsl(var(--primary-2))",
                 secondary: "hsl(var(--secondary))",
                 "secondary-foreground": "hsl(var(--secondary-foreground))",
                 muted: "hsl(var(--muted))",

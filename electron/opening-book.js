@@ -106,15 +106,18 @@ class OpeningBookSet {
         this.books = [];
     }
 
-    loadDirectory(dir) {
+    // one folder, or several (Linux keeps the books that come with Coliseum apart from yours)
+    loadDirectory(dirs) {
         this.books = [];
-        if (!dir || !fs.existsSync(dir)) return 0;
-        for (const file of fs.readdirSync(dir)) {
-            if (!file.toLowerCase().endsWith('.bin')) continue;
-            try {
-                this.books.push(new PolyglotFile(path.join(dir, file)));
-            } catch (e) {
-                console.warn(`[OpeningBook] Could not load ${file}: ${e.message}`);
+        for (const dir of [].concat(dirs || [])) {
+            if (!dir || !fs.existsSync(dir)) continue;
+            for (const file of fs.readdirSync(dir)) {
+                if (!file.toLowerCase().endsWith('.bin')) continue;
+                try {
+                    this.books.push(new PolyglotFile(path.join(dir, file)));
+                } catch (e) {
+                    console.warn(`[OpeningBook] Could not load ${file}: ${e.message}`);
+                }
             }
         }
         return this.books.length;
@@ -136,4 +139,4 @@ class OpeningBookSet {
     }
 }
 
-module.exports = { OpeningBookSet, polyglotKey };
+module.exports = { OpeningBookSet, PolyglotFile, polyglotKey };

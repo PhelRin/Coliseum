@@ -59,6 +59,7 @@ export function TournamentDashboard({ onExit }) {
     const [ended, setEnded] = useState(null); // null | 'finished' | 'stopped'
     const [featuredSlot, setFeaturedSlot] = useState(null);
     const [endedAt, setEndedAt] = useState(null);
+    const [warning, setWarning] = useState(null);
     const live = useLiveGames('tournament-game');
     const now = useNow(250);
 
@@ -66,6 +67,7 @@ export function TournamentDashboard({ onExit }) {
         if (!window.electronAPI) return undefined;
         let alive = true;
         const offs = [
+            window.electronAPI.on('tournament-warning', (msg) => setWarning(String(msg || ''))),
             window.electronAPI.on('tournament-update', (d) => {
                 if (d && d.config) setSnap(d);
                 if (d && d.finished) setEnded('finished');
@@ -120,6 +122,7 @@ export function TournamentDashboard({ onExit }) {
     const others = boards.filter((b) => b !== featured);
     const matchOf = (b) => b && snap.matches[b.matchId];
     const labelFor = (b) => {
+        if (cfg.type === 'sprt') return b && b.gameId !== undefined ? `SPRT · game ${b.gameId}` : 'SPRT';
         const m = matchOf(b);
         if (!m) return null;
         const idx = m.games ? m.games.indexOf(b.gameId) : -1;
@@ -134,7 +137,9 @@ export function TournamentDashboard({ onExit }) {
         if (filePath) await window.electronAPI.saveFileContent(filePath, pgn);
     };
 
-    const recent = snap.games.filter((g) => g.status === 'done' && g.result).slice(-14).reverse();
+    const recent = snap.sprt
+        ? (snap.sprt.recent || []).map((r, i) => ({ id: `s${i}`, white: { name: r.white }, black: { name: r.black }, result: { winner: r.winner, reason: r.reason } }))
+        : snap.games.filter((g) => g.status === 'done' && g.result).slice(-14).reverse();
 
     return (
         <div className="space-y-5 pb-16">
@@ -149,6 +154,7 @@ export function TournamentDashboard({ onExit }) {
                             <h2 className="font-bold text-lg text-foreground leading-tight">
                                 {fmt.title}
                                 {cfg.type === 'gauntlet' && snap.standings?.gauntlet && <span className="text-muted-foreground font-normal"> · {snap.standings.gauntlet.hero.name}</span>}
+                                {cfg.type === 'sprt' && <span className="text-muted-foreground font-normal"> · {cfg.engines[0]?.name} vs {cfg.engines[1]?.name}</span>}
                             </h2>
                             <p className="text-xs text-muted-foreground">
                                 {cfg.engines.length} engines · {tcLabel(cfg.settings)} · {concurrency} at a time
@@ -159,7 +165,7 @@ export function TournamentDashboard({ onExit }) {
                     <div className="flex-1 min-w-[200px]">
                         <div className="flex justify-between text-xs mb-1.5">
                             <span className="text-muted-foreground">
-                                {p.games} of {isKnockout && !isOver ? '≥' : ''}{p.totalGames} games
+                                {p.games} of {isKnockout && !isOver ? '≥' : cfg.type === 'sprt' ? 'up to ' : ''}{p.totalGames} games
                             </span>
                             <span className="text-muted-foreground font-mono flex items-center gap-1"><Clock size={11} /> {fmtDuration((isOver ? snap.finishedAt || endedAt || now : now) - snap.startedAt)}</span>
                         </div>
@@ -184,7 +190,11 @@ export function TournamentDashboard({ onExit }) {
                 </div>
             </div>
 
+            {(warning || snap.warning) && <div className="text-sm text-yellow-200 bg-yellow-500/10 border border-yellow-500/25 rounded-xl px-4 py-3">{warning || snap.warning}</div>}
+
             {isOver && <ResultBanner snap={snap} stopped={ended === 'stopped'} />}
+
+            {snap.sprt && <SprtCard s={snap.sprt} names={[cfg.engines[0]?.name, cfg.engines[1]?.name]} />}
 
             {/* live games: the featured board, the others beside it */}
             {!isOver && (
@@ -223,7 +233,9 @@ export function TournamentDashboard({ onExit }) {
 
 function tcLabel(s) {
     if (!s) return '';
-    if (s.movetime) return `${s.movetime} ms/move`;
+    if (s.movetime) return s.movetime >= 1000 ? `${+(s.movetime / 1000).toFixed(2)} s/move` : `${s.movetime} ms/move`;
+    if (s.depth) return `depth ${s.depth}`;
+    if (s.nodes) return `${Number(s.nodes).toLocaleString()} nodes`;
     if (s.type === 'unlimited') return 'unlimited';
     const base = s.initial >= 60000 ? `${+(s.initial / 60000).toFixed(1)}` : `${+(s.initial / 1000).toFixed(1)}s`;
     return `${base}+${+((s.inc || 0) / 1000).toFixed(1)}`;
@@ -246,9 +258,14 @@ function ResultBanner({ snap, stopped }) {
     const st = snap.standings || {};
     let title = null;
     let sub = null;
+    const sp = snap.sprt;
     if (stopped) {
-        title = 'Tournament stopped';
+        title = cfg.type === 'sprt' ? 'SPRT stopped' : 'Tournament stopped';
         sub = 'Games played so far are below. You can resume it from the lobby.';
+    } else if (sp) {
+        const [a, b] = cfg.engines.map((e) => e.name);
+        title = sp.result === 'H1' ? `H1 accepted: ${a} is stronger than ${b}` : sp.result === 'H0' ? `H0 accepted: ${a} is not ${sp.elo1} Elo stronger than ${b}` : `No decision after ${sp.games} games`;
+        sub = Number.isFinite(sp.elo) ? `Elo ${fmtElo(sp.elo)} (95%: ${fmtElo(sp.eloLow)} to ${fmtElo(sp.eloHigh)}) · LLR ${(sp.llr || 0).toFixed(2)} · ${sp.games} games` : null;
     } else if (cfg.type === 'gauntlet' && st.gauntlet) {
         const h = st.gauntlet.hero;
         title = `${h.name} scored ${fmtPts(h.points)} / ${h.played}`;
@@ -258,10 +275,12 @@ function ResultBanner({ snap, stopped }) {
     } else if (st.rows && st.rows[0]) {
         title = `${st.rows[0].name} wins with ${fmtPts(st.rows[0].points)} points`;
     }
+    const failed = !stopped && sp && sp.result === 'H0';
+    const neutral = !stopped && sp && sp.result !== 'H1' && sp.result !== 'H0';
     return (
-        <div className={`rounded-2xl p-5 border flex items-center gap-4 ${stopped ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-gradient-to-r from-primary/15 to-transparent border-primary/25'}`}>
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${stopped ? 'bg-yellow-500/15' : 'bg-primary/15'}`}>
-                {stopped ? <Square size={18} className="text-yellow-400 fill-current" /> : <Crown size={24} className="text-primary" />}
+        <div className={`rounded-2xl p-5 border flex items-center gap-4 ${stopped || neutral ? 'bg-yellow-500/10 border-yellow-500/20' : failed ? 'bg-gradient-to-r from-red-500/15 to-transparent border-red-500/25' : 'bg-gradient-to-r from-primary/15 to-transparent border-primary/25'}`}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${stopped || neutral ? 'bg-yellow-500/15' : failed ? 'bg-red-500/15' : 'bg-primary/15'}`}>
+                {stopped ? <Square size={18} className="text-yellow-400 fill-current" /> : sp ? <Activity size={24} className={failed ? 'text-red-400' : neutral ? 'text-yellow-400' : 'text-primary'} /> : <Crown size={24} className="text-primary" />}
             </div>
             <div className="min-w-0">
                 <div className={`text-lg font-bold truncate ${stopped ? 'text-yellow-300' : 'text-foreground'}`}>{title}</div>
@@ -325,6 +344,78 @@ function GauntletTable({ g }) {
                 </table>
             </div>
             <p className="px-4 py-2.5 text-[11px] text-muted-foreground border-t border-white/5">Elo is how much stronger (+) or weaker (−) {h.name} played than each opponent, with a 95% margin. The margin shrinks with more games.</p>
+        </Card>
+    );
+}
+
+const fmtElo = (x) => (x === null || x === undefined || !Number.isFinite(x) ? '–' : `${x >= 0 ? '+' : ''}${x.toFixed(1)}`);
+
+// The SPRT at a glance: where the log-likelihood ratio sits between the two bounds, the Elo
+// estimate so far and the game-pair (pentanomial) counts.
+function SprtCard({ s, names }) {
+    const llr = Number.isFinite(s.llr) ? s.llr : 0;
+    const lower = Number.isFinite(s.lower) ? s.lower : Math.log(s.beta / (1 - s.alpha));
+    const upper = Number.isFinite(s.upper) ? s.upper : Math.log((1 - s.beta) / s.alpha);
+    const span = upper - lower || 1;
+    const pos = Math.max(0, Math.min(100, ((llr - lower) / span) * 100));
+    const zero = ((0 - lower) / span) * 100;
+    const decided = s.result === 'H1' || s.result === 'H0';
+    const status = s.result === 'H1' ? { text: 'H1 accepted', cls: 'bg-primary/15 text-primary border-primary/30' }
+        : s.result === 'H0' ? { text: 'H0 accepted', cls: 'bg-red-500/15 text-red-300 border-red-500/30' }
+            : s.result === 'limit' ? { text: 'Game limit reached', cls: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30' }
+                : { text: 'Running', cls: 'bg-white/5 text-muted-foreground border-white/10' };
+    const maxPenta = Math.max(1, ...(s.penta || [0]));
+    return (
+        <Card
+            title="SPRT"
+            icon={<Activity size={15} className="text-primary" />}
+            right={<span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${status.cls}`}>{status.text}</span>}
+        >
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-5">
+                <div className="space-y-4 min-w-0">
+                    <div>
+                        <div className="flex items-end justify-between gap-3 mb-2">
+                            <div>
+                                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Log-likelihood ratio</div>
+                                <div className={`text-3xl font-black font-mono tabular-nums ${llr >= upper ? 'text-primary' : llr <= lower ? 'text-red-400' : 'text-foreground'}`}>{llr.toFixed(2)}</div>
+                            </div>
+                            <div className="text-right text-[11px] text-muted-foreground font-mono">
+                                bounds {lower.toFixed(2)} … {upper.toFixed(2)}
+                            </div>
+                        </div>
+                        <div className="relative h-3 rounded-full bg-gradient-to-r from-red-500/30 via-white/5 to-primary/30">
+                            <div className="absolute top-[-3px] bottom-[-3px] w-px bg-white/30" style={{ left: `${zero}%` }} />
+                            <div className={`absolute top-[-4px] w-2.5 h-5 rounded-full shadow ${decided ? (s.result === 'H1' ? 'bg-primary' : 'bg-red-400') : 'bg-white'}`} style={{ left: `calc(${pos}% - 5px)` }} />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">
+                            <span>H0: gain ≤ {s.elo0} Elo</span>
+                            <span>H1: gain ≥ {s.elo1} Elo</span>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <MiniStat label="Elo" value={fmtElo(s.elo)} />
+                        <MiniStat label="95% range" value={!Number.isFinite(s.elo) ? '–' : `${fmtElo(s.eloLow)} … ${fmtElo(s.eloHigh)}`} />
+                        <MiniStat label="LOS" value={s.los === null || s.los === undefined ? '–' : `${(s.los * 100).toFixed(1)}%`} />
+                        <MiniStat label="W / D / L" value={<WDL w={s.wdl?.w || 0} d={s.wdl?.d || 0} l={s.wdl?.l || 0} />} />
+                    </div>
+                </div>
+                <div className="min-w-0">
+                    <div className="flex items-baseline justify-between mb-2">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Game pairs ({s.pairs || 0})</div>
+                        <div className="text-[10px] text-muted-foreground">{names[0]}'s score per pair</div>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 items-end h-28">
+                        {(s.penta || [0, 0, 0, 0, 0]).map((c, i) => (
+                            <div key={i} className="flex flex-col items-center justify-end h-full gap-1 min-w-0">
+                                <span className="text-[11px] font-mono text-foreground tabular-nums">{c}</span>
+                                <div className={`w-full rounded-t-md ${i < 2 ? 'bg-red-400/60' : i === 2 ? 'bg-white/20' : 'bg-primary/60'}`} style={{ height: `${Math.max(3, (c / maxPenta) * 72)}%` }} />
+                                <span className="text-[10px] font-mono text-muted-foreground">{['0', '½', '1', '1½', '2'][i]}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">α {s.alpha} · β {s.beta} · up to {s.maxGames} games. Each pair is the same opening twice, colours swapped.</p>
+                </div>
+            </div>
         </Card>
     );
 }

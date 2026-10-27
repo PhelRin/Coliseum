@@ -28,6 +28,8 @@
     /* #4ade80 - Neon Green */
     --primary-foreground: 0 0% 5%;
     /* Black text on green */
+    --primary-2: 142 76% 36%;
+    /* second colour for gradients (the active theme sets all of these, see src/appearance.js) */
 
     --secondary: 0 0% 12%;
     /* #1f1f1f - Dark Grey Secondary */

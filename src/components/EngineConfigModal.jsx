@@ -5,11 +5,22 @@ export function EngineConfigModal({ engine, onClose }) {
     const [options, setOptions] = useState([]);
     const [values, setValues] = useState({});
     const [loading, setLoading] = useState(true);
+    const [protocol, setProtocol] = useState(null); // { protocol, mode }
+    const [loadError, setLoadError] = useState(null);
+    const [reload, setReload] = useState(0);
+
+    const changeProtocol = async (mode) => {
+        if (!window.electronAPI) return;
+        await window.electronAPI.invoke('set-engine-protocol', { path: engine.path, mode });
+        setReload((n) => n + 1);
+    };
 
     useEffect(() => {
         if (window.electronAPI && engine) {
             setLoading(true);
+            setLoadError(null);
             window.electronAPI.getEngineOptions(engine.path).then(data => {
+                setProtocol({ protocol: data.protocol || 'uci', mode: data.protocolMode || 'auto' });
                 setOptions(data.available);
                 // Merge defaults with saved values
                 const initialValues = {};
@@ -23,10 +34,12 @@ export function EngineConfigModal({ engine, onClose }) {
                 setLoading(false);
             }).catch(err => {
                 console.error("Failed to load options", err);
+                setOptions([]);
+                setLoadError('The engine did not answer. If it is a WinBoard engine, choose WinBoard below.');
                 setLoading(false);
             });
         }
-    }, [engine]);
+    }, [engine, reload]);
 
     const handleChange = (name, value, type) => {
         setValues(prev => ({
@@ -61,6 +74,30 @@ export function EngineConfigModal({ engine, onClose }) {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-black/20 border border-white/5 rounded-xl p-3">
+                        <div className="min-w-0">
+                            <div className="text-sm font-medium text-foreground">Protocol</div>
+                            <div className="text-xs text-muted-foreground">
+                                {protocol ? (protocol.mode === 'auto' ? `Detected: ${protocol.protocol === 'xboard' ? 'WinBoard (xboard)' : 'UCI'}` : 'Set by hand') : 'Checking…'}
+                            </div>
+                        </div>
+                        <div className="flex gap-1 bg-black/40 border border-white/10 rounded-xl p-1">
+                            {[['auto', 'Auto'], ['uci', 'UCI'], ['xboard', 'WinBoard']].map(([k, label]) => (
+                                <button
+                                    key={k}
+                                    type="button"
+                                    onClick={() => changeProtocol(k)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${(protocol?.mode || 'auto') === k ? 'bg-primary text-black' : 'text-muted-foreground hover:text-foreground hover:bg-white/5'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {protocol && protocol.protocol === 'xboard' && !loading && (
+                        <p className="text-xs text-muted-foreground -mt-3">WinBoard engines play games, tournaments and Elo runs. Analysis, Game Review and the Tactics Trainer need a UCI engine.</p>
+                    )}
+                    {loadError && !loading && <p className="text-sm text-red-400">{loadError}</p>}
                     {loading ? (
                         <div className="flex items-center justify-center h-40">
                             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
@@ -151,7 +188,7 @@ export function EngineConfigModal({ engine, onClose }) {
                     <button
                         onClick={handleSave}
                         disabled={loading}
-                        className="px-6 py-2.5 bg-primary text-black font-bold rounded-xl hover:brightness-110 active:scale-[0.99] transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(74,222,128,0.2)] disabled:opacity-50"
+                        className="px-6 py-2.5 bg-primary text-black font-bold rounded-xl hover:brightness-110 active:scale-[0.99] transition-all flex items-center gap-2 shadow-[0_0_15px_hsl(var(--primary)/0.2)] disabled:opacity-50"
                     >
                         <Save size={18} />
                         Save Configuration
