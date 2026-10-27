@@ -272,9 +272,9 @@ function App() {
                         isSidebarCollapsed={isSidebarCollapsed}
                     />
 
-                    {/* Patreon Edge Case */}
+                    {/* Support the Dev: StreamElements tip page */}
                     <button
-                        onClick={() => window.electronAPI && window.electronAPI.send('open-external', 'https://www.patreon.com/c/phelrin')}
+                        onClick={() => window.electronAPI && window.electronAPI.send('open-external', 'https://streamelements.com/phelrin/tip')}
                         title={isSidebarCollapsed ? "Support the Dev" : undefined}
                         className={`
                             w-full flex items-center gap-4 py-2.5 rounded-xl transition-all duration-300 group
