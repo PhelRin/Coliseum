@@ -122,7 +122,7 @@ Engines, opening books and the EAS tool are not part of this repository. Add you
 
 ## Credits
 
-The EAS Tool is by Stefan Pohl ([www.sp-cc.de](https://www.sp-cc.de)) and is included with his permission. It uses pgn-extract by David J. Barnes and PGN tools by Norman Pollock.
+The EAS Tool is by Stefan Pohl ([www.sp-cc.de](https://www.sp-cc.de)). It uses pgn-extract by David J. Barnes and PGN tools by Norman Pollock.
 
 ## License
 
