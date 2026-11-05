@@ -10,3 +10,5 @@ scratch/
 .DS_Store
 Thumbs.db
 Engines-linux
+# the EAS Tool by Stefan Pohl is bundled at build time, like the engines
+/eas/

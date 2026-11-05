@@ -31,6 +31,11 @@ Gauntlets show the main engine's score, its Elo difference against each opponent
 
 ![Round robin standings and cross table](docs/screenshots/tournament_standings.png)
 
+### Engine Aggressiveness (EAS)
+How aggressively does an engine win? The **Aggressiveness** tab runs the **Engine Aggressiveness Statistics (EAS) Tool V6.0 by Stefan Pohl** ([sp-cc.de](https://www.sp-cc.de)), which comes with Coliseum, on your games. The EAS score rewards wins with sacrifices (more for bigger and earlier ones), short wins and few "bad draws". Because it's worked out from each engine's own wins, a weaker engine can still score high.
+
+Score the last tournament, any PGN file or your Quick Match archive, either for one main engine (the tool's gauntlet version) or for every engine. Each engine's score is split into its parts and its sacrifices broken down by size. Games the tool marks as interesting wins open straight in Game Review. Every report is kept, so you can compare runs, and a finished tournament has a **Run EAS** button of its own. The tool's full report is always shown next to Coliseum's summary, so nothing is reinterpreted. The EAS tool runs on Windows.
+
 ### Elo Estimation
 Pick some engines and let them play each other non-stop. Their ratings are worked out from every game they have played, with a ± range that narrows as more games come in, a chart of how the ratings moved, and an optional anchor (fix one engine you know the strength of, and the rest are measured against it).
 
@@ -113,8 +118,12 @@ npm run electron:build   # build the installer for the system you're on into rel
 npm run electron:build:linux   # build the Linux AppImage and .deb
 ```
 
-Engines and opening books are not part of this repository. Add your own engines from inside the app; to bundle some with the installer, put them in an `Engines` folder (Windows) or `Engines-linux` folder (Linux), and Polyglot books in a `books` folder, before building.
+Engines, opening books and the EAS tool are not part of this repository. Add your own engines from inside the app. To bundle some with the installer, put them in an `Engines` folder (Windows) or `Engines-linux` folder (Linux) before building, and put Polyglot books in a `books` folder. For the Windows build, put the EAS Tool V6.0 (its two batch files, ReadMe, WhatsNew and `bin` folder) in an `eas` folder.
+
+## Credits
+
+The EAS Tool is by Stefan Pohl ([www.sp-cc.de](https://www.sp-cc.de)) and is included with his permission. It uses pgn-extract by David J. Barnes and PGN tools by Norman Pollock.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT for Coliseum itself, see [LICENSE](LICENSE). The bundled engines and the EAS tool keep their own licences.

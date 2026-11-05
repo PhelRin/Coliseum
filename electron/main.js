@@ -15,6 +15,7 @@ const { TournamentManager } = require('./tournament');
 const { EloManager } = require('./elo-manager');
 const { ConfigManager } = require('./config-manager');
 const { Career } = require('./career');
+const { EasRunner } = require('./eas');
 const { TournamentArchive } = require('./tournament-archive');
 const { fetchOnlineGames } = require('./online-games');
 const { LinkedEngines, setLaunchResolver, samePath } = require('./linked-engines');
@@ -29,6 +30,7 @@ let mainWindow;
 let arbiter;
 let tournamentManager;
 let eloManager;
+let easRunner;
 let configManager;
 const career = new Career();
 
@@ -172,6 +174,27 @@ const createWindow = () => {
     const makeArbiter = (channel) => (slot) => wireCareer(new Arbiter(mainWindow, configManager, { slot, channel }));
     tournamentManager = new TournamentManager(mainWindow, makeArbiter('tournament-game'), null);
     eloManager = new EloManager(mainWindow, makeArbiter('elo-game'), career);
+
+    // EAS Tool V6.0 by Stefan Pohl, shipped in the app's resources
+    easRunner = new EasRunner(mainWindow, {
+        sourceDir: app.isPackaged ? path.join(process.resourcesPath, 'eas') : path.join(__dirname, '..', 'eas'),
+        dataDir: app.getPath('userData'),
+    });
+    ipcMain.handle('eas-info', () => easRunner.info());
+    ipcMain.handle('eas-run', async (_, opts) => {
+        try {
+            let pgn = opts && opts.pgn;
+            if (opts && opts.path) pgn = fs.readFileSync(opts.path, 'latin1');
+            const report = await easRunner.run({ pgn, mode: opts && opts.mode, label: (opts && opts.label) || 'Games' });
+            return { ok: true, report };
+        } catch (e) {
+            return { ok: false, error: e.message || String(e) };
+        }
+    });
+    ipcMain.on('eas-cancel', () => easRunner.cancel());
+    ipcMain.handle('eas-reports', () => easRunner.listReports());
+    ipcMain.handle('eas-report', (_, id) => easRunner.getReport(id));
+    ipcMain.handle('eas-delete-report', (_, id) => easRunner.deleteReport(id));
 
     // Linked engines run from a snapshot (a copy of their current build) so the original can
     // be rebuilt while Coliseum uses it. Tournaments and Elo runs pin their own snapshot.
@@ -759,6 +782,7 @@ const createWindow = () => {
         try { gameReviewer.stop(); } catch (e) { /* ignore */ }
         try { puzzleGenerator.stop(); } catch (e) { /* ignore */ }
         try { if (trainerEngine) trainerEngine.stop(); } catch (e) { /* ignore */ }
+        try { if (easRunner) easRunner.cancel('The app was closed.'); } catch (e) { /* ignore */ }
     });
 
 

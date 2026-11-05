@@ -3,6 +3,7 @@ import { Trophy, Square, Download, Crown, Swords, Clock, ArrowLeft, Activity, Li
 import { LiveGameCard } from './live/LiveGameCard';
 import { useLiveGames, useNow } from './live/useLive';
 import { FORMATS } from './TournamentSetup';
+import { EasCard } from './eas/EasCard';
 
 const fmtPts = (x) => (x === undefined || x === null ? '–' : Number.isInteger(x) ? String(x) : x.toFixed(1));
 const resultText = (w) => (w === 'white' ? '1-0' : w === 'black' ? '0-1' : w === 'draw' ? '½-½' : '–');
@@ -54,7 +55,7 @@ export function WDL({ w, d, l }) {
     );
 }
 
-export function TournamentDashboard({ onExit }) {
+export function TournamentDashboard({ onExit, onOpenEas }) {
     const [snap, setSnap] = useState(null);
     const [ended, setEnded] = useState(null); // null | 'finished' | 'stopped'
     const [featuredSlot, setFeaturedSlot] = useState(null);
@@ -225,6 +226,7 @@ export function TournamentDashboard({ onExit }) {
                 {(cfg.type === 'round_robin' || cfg.type === 'swiss') && <StandingsTable rows={snap.standings.rows} type={cfg.type} />}
                 {cfg.type === 'round_robin' && cfg.engines.length <= 12 && <CrossTable rows={snap.standings.rows} />}
                 {isKnockout && <Bracket matches={snap.matches} champion={snap.standings.champion} />}
+                {isOver && p.games > 0 && <EasCard type={cfg.type} label={`${fmt.title} (${cfg.engines.length} engines)`} onOpenEas={onOpenEas} />}
                 {isOver && <RecentGames games={recent} />}
             </div>
         </div>

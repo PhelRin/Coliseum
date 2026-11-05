@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Settings, Play, Sword, Trophy, FolderOpen, CircuitBoard, Activity, TrendingUp, Twitch, History, Heart, Volume2, VolumeX, RotateCcw, Zap, Grid, Link2, Unlink, AlertTriangle, Copy, X } from 'lucide-react';
+import { BookOpen, Settings, Play, Sword, Trophy, FolderOpen, CircuitBoard, Activity, TrendingUp, Twitch, History, Heart, Volume2, VolumeX, RotateCcw, Zap, Grid, Flame, Link2, Unlink, AlertTriangle, Copy, X } from 'lucide-react';
 import { MatchSetup } from './components/MatchSetup';
 import { Arena } from './components/Arena';
 import { TournamentSetup } from './components/TournamentSetup';
 import { TournamentDashboard } from './components/TournamentDashboard';
 import { EloEstimationDashboard } from './components/EloEstimationDashboard';
+import { EasDashboard } from './components/EasDashboard';
 import { TwitchDashboard } from './components/TwitchSidebar';
 import { HistoryDashboard } from './components/HistoryDashboard';
 
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
     { id: 'twitch', label: 'Twitch', icon: <Twitch /> },
     { id: 'history', label: 'Archive', icon: <History /> },
     { id: 'elo', label: 'Elo Estimation', icon: <Activity /> },
+    { id: 'eas', label: 'Aggressiveness', icon: <Flame /> },
     { id: 'engines', label: 'Engines & Books', icon: <FolderOpen /> },
 ];
 
@@ -40,6 +42,7 @@ function App() {
     const [matchActive, setMatchActive] = useState(false);
     const [matchParams, setMatchParams] = useState(null);
     const [tournamentActive, setTournamentActive] = useState(false);
+    const [easFocus, setEasFocus] = useState(null); // EAS report to show when opening the Aggressiveness tab
     const [showSettings, setShowSettings] = useState(false);
 
     // Global Review Archive State
@@ -315,6 +318,7 @@ function App() {
                             activeTab === 'home' ? (tournamentActive ? 'Tournament' : 'Tournament Lobby') :
                             activeTab === 'match' ? (matchActive ? 'Live Arena' : 'Match Setup') :
                                 activeTab === 'elo' ? 'Strength Estimation' :
+                                activeTab === 'eas' ? 'Engine Aggressiveness (EAS)' :
                                     activeTab === 'analysis' ? 'Game Analysis' :
                                         activeTab === 'board-editor' ? 'Board Editor' :
                                             activeTab === 'training' ? 'Tactics Trainer' :
@@ -328,7 +332,7 @@ function App() {
                 <div className="flex-1 overflow-y-auto p-4 lg:p-6 xl:p-8 relative">
                     <div className="max-w-[1600px] mx-auto animate-fade-in h-full">
                         {activeTab === 'home' && (
-                            tournamentActive ? <TournamentDashboard onExit={() => setTournamentActive(false)} /> : <TournamentSetup onStart={startTournament} />
+                            tournamentActive ? <TournamentDashboard onExit={() => setTournamentActive(false)} onOpenEas={(id) => { setEasFocus(id); handleTabChange('eas'); }} /> : <TournamentSetup onStart={startTournament} />
                         )}
                         {activeTab === 'play' && <PlayView onReviewGame={(pgn) => handleAnalyzePosition(pgn, true)} />}
                         {activeTab === 'match' && (
@@ -351,6 +355,7 @@ function App() {
                         {activeTab === 'twitch' && <TwitchDashboard />}
 
                         {activeTab === 'elo' && <EloEstimationDashboard />}
+                        {activeTab === 'eas' && <EasDashboard focusReport={easFocus} onAnalyze={(pgn) => handleAnalyzePosition(pgn, false)} />}
                         {activeTab === 'history' && <HistoryDashboard onAnalyzeGame={(pgn) => handleAnalyzePosition(pgn, false)} />}
                         {activeTab === 'engines' && <EnginesAndBooks />}
                     </div>
