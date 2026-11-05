@@ -71,19 +71,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Generic IPC (Safe subset)
     invoke: (channel, data) => {
-        let validChannels = ['scan-engines', 'scan-books', 'open-engines-folder', 'install-engine', 'install-book', 'get-engine-options', 'save-engine-options', 'analysis-start', 'dialog-open-file', 'dialog-save-file', 'save-file-content', 'get-store', 'set-store', 'has-saved-tournament', 'get-presets', 'save-preset', 'delete-preset', 'get-audio-settings', 'save-audio-settings', 'get-tournament-pgn', 'puzzle-engine-eval', 'get-system-info', 'career-set-anchor', 'get-tournament-state', 'list-tournament-archive', 'read-tournament-archive', 'delete-tournament-archive', 'fetch-online-games', 'pick-engine-files', 'link-engine', 'unlink-engine', 'relink-engine', 'list-linked-engines', 'set-engine-protocol', 'inspect-openings', 'book-info', 'remove-book', 'open-books-folder', 'pick-book-files'];
+        let validChannels = ['scan-engines', 'scan-books', 'open-engines-folder', 'install-engine', 'install-book', 'get-engine-options', 'save-engine-options', 'analysis-start', 'dialog-open-file', 'dialog-save-file', 'save-file-content', 'get-store', 'set-store', 'has-saved-tournament', 'get-presets', 'save-preset', 'delete-preset', 'get-audio-settings', 'save-audio-settings', 'get-tournament-pgn', 'puzzle-engine-eval', 'get-system-info', 'career-set-anchor', 'get-tournament-state', 'eas-info', 'eas-run', 'eas-reports', 'eas-report', 'eas-delete-report', 'list-tournament-archive', 'read-tournament-archive', 'delete-tournament-archive', 'fetch-online-games', 'pick-engine-files', 'link-engine', 'unlink-engine', 'relink-engine', 'list-linked-engines', 'set-engine-protocol', 'inspect-openings', 'book-info', 'remove-book', 'open-books-folder', 'pick-book-files'];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);
         }
     },
     send: (channel, data) => {
-        let validChannels = ['start-match', 'stop-match', 'start-tournament', 'stop-tournament', 'resume-tournament', 'clear-saved-tournament', 'elo-start', 'elo-stop', 'elo-get-status', 'window-minimize', 'window-maximize', 'window-close', 'analysis-stop', 'analysis-update-position', 'manual-move', 'open-external', 'puzzle-gen-start', 'puzzle-gen-stop', 'game-review-start', 'game-review-stop', 'puzzle-engine-stop', 'check-for-updates', 'restart-and-install'];
+        let validChannels = ['start-match', 'stop-match', 'start-tournament', 'stop-tournament', 'resume-tournament', 'clear-saved-tournament', 'elo-start', 'elo-stop', 'elo-get-status', 'window-minimize', 'window-maximize', 'window-close', 'analysis-stop', 'analysis-update-position', 'manual-move', 'open-external', 'puzzle-gen-start', 'puzzle-gen-stop', 'game-review-start', 'game-review-stop', 'puzzle-engine-stop', 'check-for-updates', 'restart-and-install', 'eas-cancel'];
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, data);
         }
     },
     on: (channel, func) => {
-        let validChannels = ['board-update', 'engine-info', 'match-ended', 'match-log', 'match-started', 'match-error', 'tournament-update', 'tournament-finished', 'tournament-warning', 'tournament-match-start', 'elo-update', 'analysis-update', 'analysis-error', 'puzzle-gen-progress', 'puzzle-gen-detected', 'puzzle-gen-finished', 'puzzle-gen-error', 'game-review-progress', 'game-review-finished', 'game-review-error', 'update-available', 'update-download-progress', 'update-downloaded', 'update-error', 'tournament-game', 'elo-game'];
+        let validChannels = ['board-update', 'engine-info', 'match-ended', 'match-log', 'match-started', 'match-error', 'tournament-update', 'tournament-finished', 'tournament-warning', 'tournament-match-start', 'elo-update', 'analysis-update', 'analysis-error', 'puzzle-gen-progress', 'puzzle-gen-detected', 'puzzle-gen-finished', 'puzzle-gen-error', 'game-review-progress', 'game-review-finished', 'game-review-error', 'update-available', 'update-download-progress', 'update-downloaded', 'update-error', 'tournament-game', 'elo-game', 'eas-progress'];
         if (validChannels.includes(channel)) {
             // Strip event as it includes sender
             const subscription = (event, ...args) => func(...args);
