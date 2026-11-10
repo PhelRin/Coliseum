@@ -1,6 +1,6 @@
 {
   "name": "coliseum",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Modern Chess Engine Tournament Manager",
   "main": "electron/main.js",
   "scripts": {

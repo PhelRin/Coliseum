@@ -202,7 +202,7 @@ const createWindow = () => {
     tournamentManager.linked = linkedEngines;
     tournamentManager.dataDir = app.getPath('userData');
     eloManager.linked = linkedEngines;
-    setLaunchResolver((p) => linkedEngines.snapshot(p));
+    setLaunchResolver((p) => linkedEngines.snapshot(p), linkedEngines);
 
     let store;
     let tournamentArchive = null;

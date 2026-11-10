@@ -1,5 +1,5 @@
 const { Chess } = require('chess.js');
-const { createEngine, resolveProtocol } = require('./engine-protocol');
+const { createEngine, resolveProtocol, fallBackToOriginal } = require('./engine-protocol');
 const { PolyglotBook } = require('./polyglot');
 const EventEmitter = require('events');
 
@@ -245,6 +245,31 @@ class Arbiter extends EventEmitter {
             this.playNextMove(currentMatchId);
         } catch (err) {
             if (this.matchId !== currentMatchId) return done;
+            // A linked engine runs as a copy. Some engines (commercial ones that check their licence
+            // against their own location) won't start that way: if the original answers, run it
+            // where it lives from now on and start the game again, once.
+            if (!this.started && !this.settings.inPlaceRetry) {
+                const stuck = [[this.engineWhite, whitePath, 'w'], [this.engineBlack, blackPath, 'b']]
+                    .filter(([eng]) => eng && !(eng.uciOk && eng.ready));
+                const moved = [];
+                for (const [eng, p, side] of stuck) {
+                    eng.quit();
+                    if (await fallBackToOriginal(p, eng.launched)) moved.push(side);
+                }
+                if (moved.length && this.matchId === currentMatchId) {
+                    for (const side of moved) this.ui('match-log', `${this.names[side]} did not start as a copy; running it from its own folder.`);
+                    if (this.engineWhite) this.engineWhite.quit();
+                    if (this.engineBlack) this.engineBlack.quit();
+                    const launchPaths = { ...(this.settings.launchPaths || {}) };
+                    for (const side of moved) delete launchPaths[side];
+                    const resolveFirst = this.pendingResolve;
+                    this.pendingResolve = null;
+                    const result = this.startMatch(whitePath, blackPath, { ...this.settings, launchPaths, inPlaceRetry: true });
+                    if (resolveFirst) result.then(resolveFirst, () => resolveFirst(null));
+                    return result;
+                }
+                if (this.matchId !== currentMatchId) return done;
+            }
             console.error('Match error:', err);
             this.ui('match-error', err.message);
             this.finish(null);

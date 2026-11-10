@@ -24,7 +24,8 @@ class UciEngine extends EventEmitter {
     start() {
         try {
             const engineDir = path.dirname(this.path);
-            this.process = spawn(this.launchPath || launchFile(this.path), { cwd: engineDir });
+            this.launched = this.launchPath || launchFile(this.path); // a linked engine runs as a copy
+            this.process = spawn(this.launched, { cwd: engineDir });
 
             this.process.stdout.on('data', (data) => {
                 this.buffer += data.toString();
