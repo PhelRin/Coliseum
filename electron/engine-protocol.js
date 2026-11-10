@@ -10,7 +10,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const UciEngine = require('./uci');
 const { XboardEngine } = require('./xboard');
-const { launchFile } = require('./linked-engines');
+const { launchFile, isCopy, markRunInPlace, runsInPlace } = require('./linked-engines');
 
 const DETECT_MS = 4000;
 
@@ -92,12 +92,33 @@ function knownProtocol(enginePath) {
 }
 
 async function detect(enginePath) {
-    if (await probe(enginePath, ['uci'], /^\s*uciok\b/m)) return 'uci';
-    if (await probe(enginePath, ['xboard', 'protover 2'], /^\s*feature\s/m)) return 'xboard';
+    const launched = launchFile(enginePath);
+    const proto = await detectIn(enginePath, launched);
+    if (proto || !isCopy(enginePath, launched)) return proto;
+    // a linked engine runs as a copy; some engines refuse to (commercial engines can check their
+    // licence against the location of their own .exe). If the original answers, run it in place.
+    const original = await detectIn(enginePath, enginePath);
+    if (original) markRunInPlace(enginePath);
+    return original;
+}
+
+async function detectIn(enginePath, file) {
+    if (await probe(enginePath, ['uci'], /^\s*uciok\b/m, file)) return 'uci';
+    if (await probe(enginePath, ['xboard', 'protover 2'], /^\s*feature\s/m, file)) return 'xboard';
     return null;
 }
 
-function probe(enginePath, commands, answer) {
+/**
+ * After an engine that ran as a copy failed to start: does the original answer? If it does, the
+ * engine runs where it lives from now on and the caller can try again. Returns true if so.
+ */
+async function fallBackToOriginal(enginePath, launched) {
+    if (!enginePath || !isCopy(enginePath, launched || launchFile(enginePath))) return false;
+    const proto = await detectIn(enginePath, enginePath);
+    return !!proto && markRunInPlace(enginePath);
+}
+
+function probe(enginePath, commands, answer, file = launchFile(enginePath)) {
     return new Promise((resolve) => {
         let out = '';
         let done = false;
@@ -106,6 +127,16 @@ function probe(enginePath, commands, answer) {
             if (done) return;
             done = true;
             clearTimeout(timer);
+            // answer once the probe has gone, so the engine is never started while its probe still
+            // runs (some engines allow one instance, or lock files next to them)
+            let answered = false;
+            const answerNow = () => {
+                if (answered) return;
+                answered = true;
+                resolve(ok);
+            };
+            if (!proc || proc.exitCode !== null || proc.signalCode) return answerNow();
+            proc.once('exit', answerNow);
             try {
                 proc.stdin.write('quit\n');
             } catch (e) { /* closed */ }
@@ -113,12 +144,12 @@ function probe(enginePath, commands, answer) {
                 try {
                     if (proc.exitCode === null) require('tree-kill')(proc.pid, 'SIGKILL', () => {});
                 } catch (e) { /* gone */ }
-            }, 200);
-            resolve(ok);
+            }, 300);
+            setTimeout(answerNow, 1500); // never wait longer than this
         };
         const timer = setTimeout(() => finish(false), DETECT_MS);
         try {
-            proc = spawn(launchFile(enginePath), { cwd: path.dirname(enginePath) });
+            proc = spawn(file, { cwd: path.dirname(enginePath) });
         } catch (e) {
             clearTimeout(timer);
             resolve(false);
@@ -140,7 +171,9 @@ function probe(enginePath, commands, answer) {
 }
 
 function createEngine(enginePath, name, launchPath, protocol) {
+    // a pinned copy is dropped once the engine is known to need running where it lives
+    if (launchPath && runsInPlace(enginePath)) launchPath = null;
     return protocol === 'xboard' ? new XboardEngine(enginePath, name, launchPath) : new UciEngine(enginePath, name, launchPath);
 }
 
-module.exports = { init, getInfo, setMode, rename, resolveProtocol, knownProtocol, createEngine };
+module.exports = { init, getInfo, setMode, rename, resolveProtocol, knownProtocol, createEngine, fallBackToOriginal };

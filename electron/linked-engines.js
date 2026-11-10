@@ -10,6 +10,11 @@
 // The engine is still identified by its original path everywhere (ratings, options,
 // career stats), and it runs with its own folder as working directory, so nets and
 // books next to it are still found.
+//
+// Some engines will not run as a copy: commercial engines (Houdini, Shredder, ...) can
+// check their licence against the location of their own .exe. When the copy of an engine
+// doesn't answer but the original does, the engine is marked to run where it lives
+// (no snapshot) from then on. Relinking it, or a new build, tries the copy again.
 
 const fs = require('fs');
 const path = require('path');
@@ -78,15 +83,33 @@ class LinkedEngines {
         const entry = list.find((e) => samePath(e.path, oldPath));
         if (!entry) return { success: false, error: 'That engine is not linked.' };
         entry.path = file;
+        delete entry.inPlace; // try running a copy again
         this.save(list);
         this.dropSnapshots(oldPath);
         if (migrateKeys && !samePath(oldPath, file)) migrateKeys(oldPath, file);
         return { success: true, path: file };
     }
 
+    // engines that won't run as a copy are run where they live (see the top of this file)
+    runsInPlace(p) {
+        const e = this.entries().find((x) => samePath(x.path, p));
+        return !!(e && e.inPlace && e.inPlace === signature(p));
+    }
+
+    markRunInPlace(p) {
+        const list = this.entries();
+        const e = list.find((x) => samePath(x.path, p));
+        if (!e) return false;
+        // remembered for this build only: a rebuild gets the copy again
+        e.inPlace = signature(p);
+        this.save(list);
+        console.warn('[Linked] Runs where it lives from now on (its copy did not start):', p);
+        return true;
+    }
+
     // a runnable copy of the engine's current build (null if it is not linked or missing)
     snapshot(p) {
-        if (!this.isLinked(p) || !isFile(p)) return null;
+        if (!this.isLinked(p) || !isFile(p) || this.runsInPlace(p)) return null;
         try {
             const st = fs.statSync(p);
             const dir = this.engineDir(p);
@@ -162,6 +185,15 @@ class LinkedEngines {
     }
 }
 
+function signature(p) {
+    try {
+        const st = fs.statSync(p);
+        return `${Math.round(st.mtimeMs)}-${st.size}`;
+    } catch (e) {
+        return null;
+    }
+}
+
 function isFile(p) {
     try {
         return fs.statSync(p).isFile();
@@ -180,9 +212,33 @@ function samePath(a, b) {
 // UciEngine asks here which file to run for an engine path. Main installs the resolver
 // once the linked list is loaded; until then (and for normal engines) the path itself runs.
 let resolver = null;
+let registry = null; // the LinkedEngines instance, for the run-in-place fallback
 
-function setLaunchResolver(fn) {
+function setLaunchResolver(fn, linked) {
     resolver = fn;
+    if (linked) registry = linked;
+}
+
+// true when `launched` is a copy of `enginePath` rather than the engine itself
+function isCopy(enginePath, launched) {
+    return !!launched && !samePath(launched, enginePath);
+}
+
+function runsInPlace(enginePath) {
+    try {
+        return !!(registry && registry.runsInPlace(enginePath));
+    } catch (e) {
+        return false;
+    }
+}
+
+// the copy of this engine did not start: run the original from now on
+function markRunInPlace(enginePath) {
+    try {
+        return !!(registry && registry.markRunInPlace(enginePath));
+    } catch (e) {
+        return false;
+    }
 }
 
 function launchFile(enginePath) {
@@ -193,4 +249,4 @@ function launchFile(enginePath) {
     }
 }
 
-module.exports = { LinkedEngines, setLaunchResolver, launchFile, samePath };
+module.exports = { LinkedEngines, setLaunchResolver, launchFile, samePath, isCopy, markRunInPlace, runsInPlace };

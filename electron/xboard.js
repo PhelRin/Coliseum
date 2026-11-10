@@ -51,7 +51,8 @@ class XboardEngine extends EventEmitter {
 
     start() {
         try {
-            this.process = spawn(this.launchPath || launchFile(this.path), { cwd: path.dirname(this.path) });
+            this.launched = this.launchPath || launchFile(this.path); // a linked engine runs as a copy
+            this.process = spawn(this.launched, { cwd: path.dirname(this.path) });
             this.process.stdout.on('data', (data) => {
                 this.buffer += data.toString();
                 const lines = this.buffer.split('\n');
