@@ -144,6 +144,10 @@ class AnalysisManager {
 
     onInfo(info) {
         if (!this.searching || this.waitingForStop || !info) return;
+        // An engine that was slow to answer "stop" is still printing the old position's lines
+        // until its bestmove arrives (engines handle commands in order): those are not about the
+        // position on the board, so they must not move the arrow or the evaluation.
+        if (this.outstanding > 1) return;
         if (info.nps) this.lastNps = info.nps;
         if (!info.score) return;
         const k = parseInt(info.multipv || '1', 10) || 1;
