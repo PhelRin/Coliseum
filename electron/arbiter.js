@@ -35,6 +35,17 @@ function pgnTimeControl(tc) {
  * 'board-update' / 'match-ended' events; an arbiter with a slot number sends its events on
  * `channel` (e.g. 'tournament-game') tagged with that slot, so the screens can show every game.
  */
+
+// how long an engine may take to answer the start-up handshake
+const STARTUP_MS = 30000;
+
+// an engine that hasn't answered what it was asked during the start-up handshake
+function engineStuck(eng) {
+    if (!eng) return false;
+    if (!eng.uciOk) return true;
+    return !!eng.readySent && !eng.ready;
+}
+
 class Arbiter extends EventEmitter {
     constructor(mainWindow, configManager, opts = {}) {
         super();
@@ -158,7 +169,8 @@ class Arbiter extends EventEmitter {
             let failStartup = () => {};
             const startupTimeout = new Promise((_, reject) => {
                 failStartup = reject;
-                startupTimerId = setTimeout(() => reject(new Error('Engine startup timeout (uciok/readyok)')), protoW === 'xboard' || protoB === 'xboard' ? 20000 : 10000);
+                // engines with big networks can take a while to load (Arena waits longer too)
+                startupTimerId = setTimeout(() => reject(new Error(this.startupFailure())), STARTUP_MS);
             });
             startupTimeout.catch(() => {});
             for (const [eng, color] of [[this.engineWhite, 'w'], [this.engineBlack, 'b']]) {
@@ -191,9 +203,9 @@ class Arbiter extends EventEmitter {
             }
             await Promise.race([
                 Promise.all([
-                    this.engineWhite ? this.engineWhite.isReady() : Promise.resolve(),
-                    this.engineBlack ? this.engineBlack.isReady() : Promise.resolve(),
-                ]),
+                    this.engineWhite ? this.engineWhite.isReady(STARTUP_MS) : Promise.resolve(),
+                    this.engineBlack ? this.engineBlack.isReady(STARTUP_MS) : Promise.resolve(),
+                ]).catch(() => { throw new Error(this.startupFailure()); }),
                 startupTimeout,
             ]);
             clearTimeout(startupTimerId);
@@ -249,8 +261,10 @@ class Arbiter extends EventEmitter {
             // against their own location) won't start that way: if the original answers, run it
             // where it lives from now on and start the game again, once.
             if (!this.started && !this.settings.inPlaceRetry) {
+                // only an engine that didn't answer what it was asked: one that answered "uci" and was
+                // still waiting for its opponent to do the same isn't stuck
                 const stuck = [[this.engineWhite, whitePath, 'w'], [this.engineBlack, blackPath, 'b']]
-                    .filter(([eng]) => eng && !(eng.uciOk && eng.ready));
+                    .filter(([eng]) => engineStuck(eng));
                 const moved = [];
                 for (const [eng, p, side] of stuck) {
                     eng.quit();
@@ -276,6 +290,19 @@ class Arbiter extends EventEmitter {
             this.stopMatch();
         }
         return done;
+    }
+
+    // which engine kept the game from starting, and what it last said
+    startupFailure() {
+        const parts = [];
+        for (const [eng, side] of [[this.engineWhite, 'w'], [this.engineBlack, 'b']]) {
+            if (!engineStuck(eng)) continue;
+            const name = this.names[side] || (side === 'w' ? 'White' : 'Black');
+            const asked = eng.protocol === 'xboard' ? 'the WinBoard handshake' : eng.uciOk ? '"isready"' : '"uci"';
+            const said = eng.tail && eng.tail.length ? `its last output: "${eng.tail.join(' | ')}"` : 'it printed nothing';
+            parts.push(`${name} did not answer ${asked} within ${STARTUP_MS / 1000} s (${said})`);
+        }
+        return parts.length ? `Engine startup timeout: ${parts.join('; ')}` : 'Engine startup timeout (uciok/readyok)';
     }
 
     finish(result) {

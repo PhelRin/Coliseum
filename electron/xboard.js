@@ -57,7 +57,10 @@ class XboardEngine extends EventEmitter {
                 this.buffer += data.toString();
                 const lines = this.buffer.split('\n');
                 this.buffer = lines.pop();
-                for (const line of lines) if (line.trim()) this.parseLine(line.trim());
+                for (const line of lines) if (line.trim()) {
+                    this.remember(line.trim());
+                    this.parseLine(line.trim());
+                }
             });
             this.process.stderr.on('data', (data) => {
                 if (this.verbose) console.error(`[${this.name}] stderr: ${data}`);
@@ -225,9 +228,18 @@ class XboardEngine extends EventEmitter {
         this.send(`option ${opt.name}=${value}`);
     }
 
+    // the last few lines the engine printed, to explain a failed start
+    remember(line) {
+        if (!this.tail) this.tail = [];
+        if (/^feature\b/.test(line)) return;
+        this.tail.push(line.length > 120 ? line.slice(0, 117) + '...' : line);
+        if (this.tail.length > 3) this.tail.shift();
+    }
+
     // engines without "ping" can't be synchronised; they are taken as ready
     isReady(timeout = 10000) {
         if (this.ready) return Promise.resolve();
+        this.readySent = true;
         return this.sync(timeout);
     }
 
