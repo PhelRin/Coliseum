@@ -193,8 +193,9 @@ class XboardEngine extends EventEmitter {
         if (this.uciOk) return;
         if (typeof this.features.myname === 'string' && this.features.myname.trim()) this.name = this.features.myname.trim();
         // memory / cores are separate commands in this protocol; offer them as options
-        if (this.features.memory === 1 && !this.options.has('hash')) this.options.set('hash', { name: 'Hash', type: 'spin', default: '64', min: 1, max: 65536, special: 'memory' });
-        if (this.features.smp === 1 && !this.options.has('threads')) this.options.set('threads', { name: 'Threads', type: 'spin', default: '1', min: 1, max: 512, special: 'cores' });
+        // (no default: the protocol doesn't say what the engine uses, so nothing is sent until the user sets one)
+        if (this.features.memory === 1 && !this.options.has('hash')) this.options.set('hash', { name: 'Hash', type: 'spin', min: 1, max: 65536, special: 'memory' });
+        if (this.features.smp === 1 && !this.options.has('threads')) this.options.set('threads', { name: 'Threads', type: 'spin', min: 1, max: 512, special: 'cores' });
         this.uciOk = true;
         this.emit('uciok');
     }
@@ -363,6 +364,7 @@ class XboardEngine extends EventEmitter {
     }
 
     quit() {
+        this.quitting = true; // closed by Coliseum, not a crash
         this.send('quit');
         const proc = this.process;
         if (!proc) return;

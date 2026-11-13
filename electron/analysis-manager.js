@@ -1,5 +1,6 @@
 const UciEngine = require('./uci');
 const { resolveProtocol } = require('./engine-protocol');
+const { applySaved } = require('./engine-options');
 
 // Live (infinite) analysis for the Analysis Board.
 //
@@ -51,14 +52,11 @@ class AnalysisManager {
 
         try {
             engine.start();
-            await engine.waitForUciOk(8000);
+            await engine.waitForUciOk(30000); // engines with big networks load slowly
 
             if (this.configManager) {
-                const options = this.configManager.getSavedOptions(enginePath) || {};
-                for (const [name, val] of Object.entries(options)) {
-                    if (String(name).toLowerCase() === 'multipv') continue;
-                    engine.send(`setoption name ${name} value ${val}`);
-                }
+                // only settings the user changed; MultiPV is managed here
+                applySaved(engine, this.configManager.getSavedOptions(enginePath), ['multipv']);
             }
             this.multiPV = engine.hasOption('MultiPV') ? Math.max(1, Math.min(5, multiPV)) : 1;
             if (engine.hasOption('MultiPV')) engine.send(`setoption name MultiPV value ${this.multiPV}`);

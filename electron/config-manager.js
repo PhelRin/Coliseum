@@ -4,6 +4,15 @@ const { spawn } = require('child_process');
 const { launchFile } = require('./linked-engines');
 const protocols = require('./engine-protocol');
 const { XboardEngine } = require('./xboard');
+const { parseOptionLine, changedSettings, scrub } = require('./engine-options');
+
+// engine_options.json: { "<engine path>": { "<option>": value }, "__format": 2 }
+// Format 2 (4.0.3) holds only the settings the user changed. Files without the mark were written
+// by the options window of 4.0.2 and earlier, which saved every option an engine has.
+const FORMAT_KEY = '__format';
+const FORMAT = 2;
+// how long an engine may take to list its options (big networks load slowly)
+const OPTIONS_TIMEOUT_MS = 30000;
 
 class ConfigManager {
     constructor(userDataPath) {
@@ -15,11 +24,40 @@ class ConfigManager {
     load() {
         try {
             if (fs.existsSync(this.configPath)) {
-                this.options = JSON.parse(fs.readFileSync(this.configPath, 'utf8'));
+                const raw = JSON.parse(fs.readFileSync(this.configPath, 'utf8'));
+                this.options = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+                if (this.options[FORMAT_KEY] !== FORMAT) this.upgrade();
             }
         } catch (e) {
             console.error("Failed to load engine options:", e);
         }
+        this.options[FORMAT_KEY] = FORMAT;
+    }
+
+    // Settings saved by 4.0.2 and earlier. That options window saved every option, and on Windows
+    // it could not read the default of an option whose default ended its line: such a number
+    // was saved as "null", and such an on/off option as off (Houdini 6 and others crash or hang
+    // on those). Values that were never real are dropped everywhere. On Windows, on/off options
+    // saved as off are dropped too, since nobody can tell which of them the user chose: they go
+    // back to the engine's own default. The old file is kept next to the new one.
+    upgrade(platform = process.platform) {
+        try {
+            fs.copyFileSync(this.configPath, this.configPath.replace(/\.json$/, '') + '.before-4.0.3.json');
+        } catch (e) { /* no backup: carry on */ }
+        const cleaned = {};
+        for (const [enginePath, saved] of Object.entries(this.options)) {
+            if (enginePath === FORMAT_KEY || !saved || typeof saved !== 'object') continue;
+            const kept = scrub(saved);
+            if (platform === 'win32') {
+                for (const [name, value] of Object.entries(kept)) {
+                    if (value === false || String(value).trim().toLowerCase() === 'false') delete kept[name];
+                }
+            }
+            cleaned[enginePath] = kept;
+        }
+        this.options = cleaned;
+        this.options[FORMAT_KEY] = FORMAT;
+        this.save();
     }
 
     save() {
@@ -31,6 +69,7 @@ class ConfigManager {
     }
 
     getSavedOptions(enginePath) {
+        if (enginePath === FORMAT_KEY) return {};
         return this.options[enginePath] || {};
     }
 
@@ -44,8 +83,19 @@ class ConfigManager {
     }
 
     updateOptions(enginePath, newOptions) {
-        this.options[enginePath] = { ...(this.options[enginePath] || {}), ...newOptions };
+        this.options[enginePath] = scrub({ ...(this.options[enginePath] || {}), ...newOptions });
         this.save();
+    }
+
+    // The options window was saved: `values` is everything it showed, `available` the options the
+    // engine listed. Only what differs from the engine's defaults is kept (and later sent); a
+    // setting put back to its default is forgotten.
+    saveFromWindow(enginePath, available, values) {
+        const changed = changedSettings(available, values);
+        if (Object.keys(changed).length) this.options[enginePath] = changed;
+        else delete this.options[enginePath];
+        this.save();
+        return changed;
     }
 
     // Spawn engine to get available options (and say which protocol it speaks)
@@ -63,7 +113,7 @@ class ConfigManager {
         eng.on('error', (e) => (failed = e));
         eng.start();
         const ok = await eng.waitForUciOk(17000);
-        const available = [...eng.options.values()].map(({ name, type, default: def, min, max, options }) => ({ name, type, default: def, min, max, options }));
+        const available = [...eng.options.values()].map(({ name, type, default: def, min, max, options, special }) => ({ name, type, default: def, min, max, options, special }));
         const name = eng.name;
         eng.quit();
         if (failed) throw failed;
@@ -75,82 +125,49 @@ class ConfigManager {
         return new Promise((resolve, reject) => {
             const engine = spawn(launchFile(enginePath), { cwd: path.dirname(enginePath) });
             let output = '';
-            let options = [];
+            let settled = false;
+            const finish = (fn, value) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                try {
+                    engine.kill();
+                } catch (e) { /* already gone */ }
+                fn(value);
+            };
 
             // Timeout to kill if it hangs
-            const timeout = setTimeout(() => {
-                engine.kill();
-                reject(new Error("Engine timeout reading options"));
-            }, 3000);
+            const timeout = setTimeout(() => finish(reject, new Error("Engine timeout reading options")), OPTIONS_TIMEOUT_MS);
 
             engine.stdout.on('data', (data) => {
                 output += data.toString();
-                // Check if we have received enough info (usually 'uciok')
-                if (output.includes('uciok')) {
-                    clearTimeout(timeout);
-                    engine.kill();
-
-                    // Parse options
-                    const lines = output.split('\n');
-                    lines.forEach(line => {
-                        if (line.startsWith('option')) {
-                            const parsed = this.parseOptionLine(line);
-                            if (parsed) options.push(parsed);
-                        }
-                    });
-
-                    resolve({
-                        available: options,
-                        saved: this.getSavedOptions(enginePath)
-                    });
+                // lines end in "\r\n" on Windows
+                const lines = output.split(/\r?\n/).map((l) => l.trim());
+                if (!lines.includes('uciok')) return;
+                const options = [];
+                let engineName;
+                for (const line of lines) {
+                    if (line.startsWith('option')) {
+                        const parsed = this.parseOptionLine(line);
+                        if (parsed) options.push(parsed);
+                    } else if (line.startsWith('id name ')) {
+                        engineName = line.slice(8).trim();
+                    }
                 }
+                finish(resolve, { available: options, saved: this.getSavedOptions(enginePath), engineName });
             });
 
-            engine.on('error', (err) => {
-                clearTimeout(timeout);
-                reject(err);
-            });
+            engine.on('error', (err) => finish(reject, err));
+            engine.on('close', () => finish(reject, new Error('The engine closed before it listed its options')));
+            engine.stdin.on('error', () => {});
 
             engine.stdin.write('uci\n');
         });
     }
 
+    // option name Hash type spin default 16 min 1 max 131072
     parseOptionLine(line) {
-        // Example: option name Hash type spin default 16 min 1 max 131072
-        // option name Ponder type check default false
-        try {
-            const nameMatch = line.match(/name\s+(.*?)\s+type/);
-            const typeMatch = line.match(/type\s+(\w+)/);
-
-            if (!nameMatch || !typeMatch) return null;
-
-            const name = nameMatch[1];
-            const type = typeMatch[1];
-
-            const option = { name, type };
-
-            const defaultMatch = line.match(/default\s+(.*?)(?:\s+min|\s+max|\s+var|$)/);
-            if (defaultMatch) option.default = defaultMatch[1].trim();
-
-            if (type === 'spin') {
-                const minMatch = line.match(/min\s+(\d+)/);
-                const maxMatch = line.match(/max\s+(\d+)/);
-                if (minMatch) option.min = parseInt(minMatch[1]);
-                if (maxMatch) option.max = parseInt(maxMatch[1]);
-            } else if (type === 'combo') {
-                const varMatches = line.match(/\svar\s+(.*?)(?=\svar\s|$)/g);
-                if (varMatches) {
-                    option.options = varMatches.map(v => v.replace(/^\s*var\s+/, '').trim());
-                } else {
-                    option.options = [];
-                }
-            }
-
-            return option;
-        } catch (e) {
-            console.error("Error parsing option:", line, e);
-            return null;
-        }
+        return parseOptionLine(line);
     }
 }
 

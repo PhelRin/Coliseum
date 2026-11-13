@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, X, Save } from 'lucide-react';
+import { Settings, X, Save, RotateCcw } from 'lucide-react';
+import { defaultValue, startValue, isChanged, changedValues } from '../utils/engineOptionValues';
 
 export function EngineConfigModal({ engine, onClose }) {
     const [options, setOptions] = useState([]);
@@ -21,14 +22,14 @@ export function EngineConfigModal({ engine, onClose }) {
             setLoadError(null);
             window.electronAPI.getEngineOptions(engine.path).then(data => {
                 setProtocol({ protocol: data.protocol || 'uci', mode: data.protocolMode || 'auto' });
-                setOptions(data.available);
-                // Merge defaults with saved values
+                // buttons ("Clear Hash") are actions, not settings: they are never saved or sent
+                const settings = data.available.filter(opt => opt.type !== 'button');
+                setOptions(settings);
+                // the engine's defaults, with the saved settings on top
                 const initialValues = {};
-                data.available.forEach(opt => {
-                    initialValues[opt.name] = data.saved[opt.name] !== undefined ? data.saved[opt.name] : opt.default;
-                    // Fix types
-                    if (opt.type === 'spin') initialValues[opt.name] = parseInt(initialValues[opt.name]);
-                    if (opt.type === 'check') initialValues[opt.name] = String(initialValues[opt.name]) === 'true';
+                const saved = data.saved || {};
+                settings.forEach(opt => {
+                    initialValues[opt.name] = startValue(opt, saved[opt.name]);
                 });
                 setValues(initialValues);
                 setLoading(false);
@@ -42,18 +43,32 @@ export function EngineConfigModal({ engine, onClose }) {
     }, [engine, reload]);
 
     const handleChange = (name, value, type) => {
-        setValues(prev => ({
-            ...prev,
-            [name]: type === 'spin' ? parseInt(value) : value
-        }));
+        let v = value;
+        if (type === 'spin') {
+            const n = parseInt(value, 10);
+            v = Number.isFinite(n) ? n : ''; // an emptied box means "the engine's default"
+        }
+        setValues(prev => ({ ...prev, [name]: v }));
     };
 
+    const resetToDefaults = () => {
+        const defaults = {};
+        options.forEach(opt => {
+            defaults[opt.name] = defaultValue(opt);
+        });
+        setValues(defaults);
+    };
+
+    // Only what differs from the engine's defaults is saved, and only that is sent to the engine
+    // when it starts. An engine with nothing changed is started exactly as it is by hand.
     const handleSave = async () => {
         if (window.electronAPI) {
-            await window.electronAPI.saveEngineOptions(engine.path, values);
+            await window.electronAPI.saveEngineOptions(engine.path, changedValues(options, values), options);
             onClose();
         }
     };
+
+    const changedCount = options.filter(opt => isChanged(opt, values[opt.name])).length;
 
     if (!engine) return null;
 
@@ -108,8 +123,11 @@ export function EngineConfigModal({ engine, onClose }) {
                         options.map((opt, i) => (
                             <div key={i} className="flex flex-col gap-2">
                                 <label className="text-sm font-medium text-foreground flex justify-between">
-                                    {opt.name}
-                                    {opt.type === 'spin' && <span className="text-xs text-muted-foreground">Min: {opt.min} Max: {opt.max}</span>}
+                                    <span>
+                                        {opt.name}
+                                        {isChanged(opt, values[opt.name]) && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-primary">changed</span>}
+                                    </span>
+                                    {opt.type === 'spin' && Number.isFinite(opt.min) && Number.isFinite(opt.max) && <span className="text-xs text-muted-foreground">Min: {opt.min} Max: {opt.max}</span>}
                                 </label>
 
                                 {opt.type === 'check' && (
@@ -126,19 +144,22 @@ export function EngineConfigModal({ engine, onClose }) {
 
                                 {opt.type === 'spin' && (
                                     <div className="flex gap-4 items-center">
-                                        <input
-                                            type="range"
-                                            min={opt.min}
-                                            max={opt.max}
-                                            value={values[opt.name] || opt.min}
-                                            onChange={(e) => handleChange(opt.name, e.target.value, 'spin')}
-                                            className="flex-1 accent-primary h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                                        />
+                                        {Number.isFinite(opt.min) && Number.isFinite(opt.max) && (
+                                            <input
+                                                type="range"
+                                                min={opt.min}
+                                                max={opt.max}
+                                                value={values[opt.name] === '' || values[opt.name] === undefined ? opt.min : values[opt.name]}
+                                                onChange={(e) => handleChange(opt.name, e.target.value, 'spin')}
+                                                className="flex-1 accent-primary h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                                            />
+                                        )}
                                         <input
                                             type="number"
-                                            min={opt.min}
-                                            max={opt.max}
-                                            value={values[opt.name] || opt.min}
+                                            min={Number.isFinite(opt.min) ? opt.min : undefined}
+                                            max={Number.isFinite(opt.max) ? opt.max : undefined}
+                                            value={values[opt.name] ?? ''}
+                                            placeholder="default"
                                             onChange={(e) => handleChange(opt.name, e.target.value, 'spin')}
                                             className="w-24 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-right font-mono text-sm"
                                         />
@@ -157,7 +178,7 @@ export function EngineConfigModal({ engine, onClose }) {
                                 {opt.type === 'combo' && (
                                     <div className="relative">
                                         <select
-                                            value={values[opt.name] || opt.default || ''}
+                                            value={values[opt.name] ?? ''}
                                             onChange={(e) => handleChange(opt.name, e.target.value, 'combo')}
                                             className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-3 text-sm focus:border-primary outline-none appearance-none cursor-pointer"
                                         >
@@ -173,17 +194,30 @@ export function EngineConfigModal({ engine, onClose }) {
                                     </div>
                                 )}
 
-                                {opt.type === 'button' && (
-                                    <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm border border-white/5 w-fit">
-                                        Trigger Action
-                                    </button>
-                                )}
                             </div>
                         ))
                     )}
                 </div>
 
-                <div className="p-6 border-t border-white/5 flex justify-end gap-3 bg-black/20 rounded-b-2xl">
+                <div className="p-6 border-t border-white/5 bg-black/20 rounded-b-2xl">
+                    {!loading && options.length > 0 && (
+                        <p className="text-xs text-muted-foreground mb-3">
+                            {changedCount === 0
+                                ? 'Nothing is changed: the engine starts with its own defaults.'
+                                : `${changedCount} ${changedCount === 1 ? 'setting is' : 'settings are'} changed. Only changed settings are sent to the engine when it starts.`}
+                        </p>
+                    )}
+                    <div className="flex items-center justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={resetToDefaults}
+                        disabled={loading || options.length === 0 || changedCount === 0}
+                        title="Put every setting back to the engine's own default"
+                        className="mr-auto px-4 py-2.5 rounded-xl border border-white/10 hover:bg-white/5 transition-colors flex items-center gap-2 text-sm disabled:opacity-40"
+                    >
+                        <RotateCcw size={16} />
+                        Reset to defaults
+                    </button>
                     <button onClick={onClose} className="px-6 py-2.5 rounded-xl hover:bg-white/5 transition-colors">Cancel</button>
                     <button
                         onClick={handleSave}
@@ -193,6 +227,7 @@ export function EngineConfigModal({ engine, onClose }) {
                         <Save size={18} />
                         Save Configuration
                     </button>
+                    </div>
                 </div>
             </div>
         </div>

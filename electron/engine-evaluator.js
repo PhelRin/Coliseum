@@ -4,6 +4,7 @@
 
 const UciEngine = require('./uci');
 const { resolveProtocol } = require('./engine-protocol');
+const { applySaved } = require('./engine-options');
 
 class EngineEvaluator {
     constructor(label = 'Evaluator', configManager = null) {
@@ -30,14 +31,11 @@ class EngineEvaluator {
         this.engine = engine;
         engine.on('error', (err) => console.error(`[${this.label}] engine error:`, err && err.message));
         engine.start();
-        await engine.waitForUciOk(8000);
+        await engine.waitForUciOk(30000); // engines with big networks load slowly
 
         if (this.configManager) {
-            const options = this.configManager.getSavedOptions(enginePath) || {};
-            for (const [name, val] of Object.entries(options)) {
-                if (String(name).toLowerCase() === 'multipv') continue; // we manage MultiPV ourselves
-                engine.send(`setoption name ${name} value ${val}`);
-            }
+            // only settings the user changed; MultiPV is managed here
+            applySaved(engine, this.configManager.getSavedOptions(enginePath), ['multipv']);
         }
 
         const mpv = engine.options.get('multipv');

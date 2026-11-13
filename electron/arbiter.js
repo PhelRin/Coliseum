@@ -1,6 +1,7 @@
 const { Chess } = require('chess.js');
 const { createEngine, resolveProtocol, fallBackToOriginal } = require('./engine-protocol');
 const { PolyglotBook } = require('./polyglot');
+const { applySaved } = require('./engine-options');
 const EventEmitter = require('events');
 
 // How far a clock may go below zero before it counts as a time forfeit. The GUI itself adds a
@@ -184,6 +185,16 @@ class Arbiter extends EventEmitter {
                 });
             }
             this.started = false;
+            // an engine that exits while starting (a crash) fails the start at once, with what it
+            // printed, instead of after the whole start-up time
+            for (const [eng, color] of [[this.engineWhite, 'w'], [this.engineBlack, 'b']]) {
+                if (!eng) continue;
+                eng.once('quit', () => {
+                    if (this.started || this.matchId !== currentMatchId || eng.quitting) return;
+                    eng.exited = true;
+                    failStartup(new Error(this.startupFailure()));
+                });
+            }
             if (this.engineWhite) this.engineWhite.start();
             if (this.engineBlack) this.engineBlack.start();
 
@@ -198,7 +209,8 @@ class Arbiter extends EventEmitter {
             if (this.configManager) {
                 for (const [eng, p] of [[this.engineWhite, whitePath], [this.engineBlack, blackPath]]) {
                     if (!eng) continue;
-                    for (const [name, val] of Object.entries(this.configManager.getSavedOptions(p))) eng.setOption(name, val);
+                    // only settings the user changed: see engine-options.js
+                    eng.sentOptions = applySaved(eng, this.configManager.getSavedOptions(p));
                 }
             }
             await Promise.race([
@@ -300,9 +312,24 @@ class Arbiter extends EventEmitter {
             const name = this.names[side] || (side === 'w' ? 'White' : 'Black');
             const asked = eng.protocol === 'xboard' ? 'the WinBoard handshake' : eng.uciOk ? '"isready"' : '"uci"';
             const said = eng.tail && eng.tail.length ? `its last output: "${eng.tail.join(' | ')}"` : 'it printed nothing';
-            parts.push(`${name} did not answer ${asked} within ${STARTUP_MS / 1000} s (${said})`);
+            let text = eng.exited
+                ? `${name} stopped while starting, before it answered ${asked} (${said})`
+                : `${name} did not answer ${asked} within ${STARTUP_MS / 1000} s (${said})`;
+            // the settings it was sent are the first thing to check
+            const sent = eng.sentOptions || [];
+            if (sent.length) {
+                const list = sent.slice(0, 6).map(([n, v]) => `${n} = ${v}`).join(', ') + (sent.length > 6 ? `, and ${sent.length - 6} more` : '');
+                text += `. It was sent these saved settings: ${list}. If it starts in other programs, open its settings and press "Reset to defaults"`;
+            }
+            parts.push(text);
         }
-        return parts.length ? `Engine startup timeout: ${parts.join('; ')}` : 'Engine startup timeout (uciok/readyok)';
+        if (!parts.length) {
+            const gone = [[this.engineWhite, 'w'], [this.engineBlack, 'b']].find(([eng]) => eng && eng.exited);
+            if (gone) return `Engine start-up failed: ${this.names[gone[1]] || 'An engine'} stopped while starting`;
+            return 'Engine startup timeout (uciok/readyok)';
+        }
+        const crashed = [this.engineWhite, this.engineBlack].some((eng) => eng && eng.exited);
+        return `${crashed ? 'Engine start-up failed' : 'Engine startup timeout'}: ${parts.join('; ')}`;
     }
 
     finish(result) {
