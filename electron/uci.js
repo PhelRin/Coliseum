@@ -34,12 +34,16 @@ class UciEngine extends EventEmitter {
                 this.buffer = lines.pop();
 
                 for (const line of lines) {
-                    if (line.trim()) this.parseLine(line.trim());
+                    if (line.trim()) {
+                        this.remember(line.trim());
+                        this.parseLine(line.trim());
+                    }
                 }
             });
 
             this.process.stderr.on('data', (data) => {
                 console.error(`[${this.name}] Error: ${data}`);
+                for (const line of String(data).split('\n')) if (line.trim()) this.remember(line.trim());
             });
 
             this.process.on('close', (code) => {
@@ -151,10 +155,19 @@ class UciEngine extends EventEmitter {
         return info;
     }
 
+    // the last few lines the engine printed, to explain a failed start
+    remember(line) {
+        if (!this.tail) this.tail = [];
+        if (/^option\b/.test(line)) return; // engines list dozens; they say nothing about a failed start
+        this.tail.push(line.length > 120 ? line.slice(0, 117) + '...' : line);
+        if (this.tail.length > 3) this.tail.shift();
+    }
+
     // High Level API
     isReady(timeout = 10000) {
         return new Promise((resolve, reject) => {
             if (this.ready) return resolve();
+            this.readySent = true;
 
             const timer = setTimeout(() => {
                 this.removeListener('ready', onReady);

@@ -13,6 +13,7 @@ const { XboardEngine } = require('./xboard');
 const { launchFile, isCopy, markRunInPlace, runsInPlace } = require('./linked-engines');
 
 const DETECT_MS = 4000;
+const SLOW_DETECT_MS = 20000; // an engine still loading, or still listing its UCI options
 
 let file = null;
 let data = {}; // enginePath -> { mode: 'auto'|'uci'|'xboard', detected, sig }
@@ -147,7 +148,18 @@ function probe(enginePath, commands, answer, file = launchFile(enginePath)) {
             }, 300);
             setTimeout(answerNow, 1500); // never wait longer than this
         };
-        const timer = setTimeout(() => finish(false), DETECT_MS);
+        // An engine that is still loading (a big network) prints nothing for a while, and a UCI
+        // engine that is listing its options hasn't said uciok yet: both get longer to answer.
+        // Anything else that hasn't answered by DETECT_MS doesn't speak this protocol.
+        const started = Date.now();
+        const check = () => {
+            if (done) return;
+            const waited = Date.now() - started;
+            const busy = !out.trim() || /^\s*(id\s+name|id\s+author|option\s+name)\b/m.test(out);
+            if (waited >= DETECT_MS && !(busy && waited < SLOW_DETECT_MS)) return finish(false);
+            timer = setTimeout(check, 250);
+        };
+        let timer = setTimeout(check, DETECT_MS);
         try {
             proc = spawn(file, { cwd: path.dirname(enginePath) });
         } catch (e) {
