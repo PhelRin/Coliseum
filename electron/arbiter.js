@@ -2,6 +2,7 @@ const { Chess } = require('chess.js');
 const { createEngine, resolveProtocol, fallBackToOriginal } = require('./engine-protocol');
 const { PolyglotBook } = require('./polyglot');
 const { applySaved } = require('./engine-options');
+const { isCopy } = require('./linked-engines');
 const EventEmitter = require('events');
 
 // How far a clock may go below zero before it counts as a time forfeit. The GUI itself adds a
@@ -45,6 +46,15 @@ function engineStuck(eng) {
     if (!eng) return false;
     if (!eng.uciOk) return true;
     return !!eng.readySent && !eng.ready;
+}
+
+// The engines that kept a game from starting. When one stopped (crashed) while starting, it is
+// that one alone: its opponent may simply not have finished getting ready yet. Otherwise it is
+// every engine that didn't answer in time.
+function enginesAtFault(pairs) {
+    const real = pairs.filter(([eng]) => eng);
+    const gone = real.filter(([eng]) => eng.exited);
+    return gone.length ? gone : real.filter(([eng]) => engineStuck(eng));
 }
 
 class Arbiter extends EventEmitter {
@@ -275,8 +285,7 @@ class Arbiter extends EventEmitter {
             if (!this.started && !this.settings.inPlaceRetry) {
                 // only an engine that didn't answer what it was asked: one that answered "uci" and was
                 // still waiting for its opponent to do the same isn't stuck
-                const stuck = [[this.engineWhite, whitePath, 'w'], [this.engineBlack, blackPath, 'b']]
-                    .filter(([eng]) => engineStuck(eng));
+                const stuck = enginesAtFault([[this.engineWhite, whitePath, 'w'], [this.engineBlack, blackPath, 'b']]);
                 const moved = [];
                 for (const [eng, p, side] of stuck) {
                     eng.quit();
@@ -307,13 +316,12 @@ class Arbiter extends EventEmitter {
     // which engine kept the game from starting, and what it last said
     startupFailure() {
         const parts = [];
-        for (const [eng, side] of [[this.engineWhite, 'w'], [this.engineBlack, 'b']]) {
-            if (!engineStuck(eng)) continue;
+        for (const [eng, side] of enginesAtFault([[this.engineWhite, 'w'], [this.engineBlack, 'b']])) {
             const name = this.names[side] || (side === 'w' ? 'White' : 'Black');
             const asked = eng.protocol === 'xboard' ? 'the WinBoard handshake' : eng.uciOk ? '"isready"' : '"uci"';
             const said = eng.tail && eng.tail.length ? `its last output: "${eng.tail.join(' | ')}"` : 'it printed nothing';
             let text = eng.exited
-                ? `${name} stopped while starting, before it answered ${asked} (${said})`
+                ? `${name} stopped while starting${engineStuck(eng) ? `, before it answered ${asked}` : ''} (${said})`
                 : `${name} did not answer ${asked} within ${STARTUP_MS / 1000} s (${said})`;
             // the settings it was sent are the first thing to check
             const sent = eng.sentOptions || [];
@@ -321,13 +329,12 @@ class Arbiter extends EventEmitter {
                 const list = sent.slice(0, 6).map(([n, v]) => `${n} = ${v}`).join(', ') + (sent.length > 6 ? `, and ${sent.length - 6} more` : '');
                 text += `. It was sent these saved settings: ${list}. If it starts in other programs, open its settings and press "Reset to defaults"`;
             }
+            // where it was run from: an engine separated from the files beside it often can't start
+            const file = eng.launched || eng.path;
+            if (file) text += `. Started from ${file}${isCopy(eng.path, eng.launched) ? ' (a copy: "Run a copy" is on in its settings)' : ''}`;
             parts.push(text);
         }
-        if (!parts.length) {
-            const gone = [[this.engineWhite, 'w'], [this.engineBlack, 'b']].find(([eng]) => eng && eng.exited);
-            if (gone) return `Engine start-up failed: ${this.names[gone[1]] || 'An engine'} stopped while starting`;
-            return 'Engine startup timeout (uciok/readyok)';
-        }
+        if (!parts.length) return 'Engine startup timeout (uciok/readyok)';
         const crashed = [this.engineWhite, this.engineBlack].some((eng) => eng && eng.exited);
         return `${crashed ? 'Engine start-up failed' : 'Engine startup timeout'}: ${parts.join('; ')}`;
     }

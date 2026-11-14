@@ -51,7 +51,7 @@ class XboardEngine extends EventEmitter {
 
     start() {
         try {
-            this.launched = this.launchPath || launchFile(this.path); // a linked engine runs as a copy
+            this.launched = this.launchPath || launchFile(this.path); // a copy, for a linked engine with "run a copy" on
             this.process = spawn(this.launched, { cwd: path.dirname(this.path) });
             this.process.stdout.on('data', (data) => {
                 this.buffer += data.toString();

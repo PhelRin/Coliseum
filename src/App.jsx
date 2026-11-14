@@ -700,8 +700,8 @@ function EnginesView() {
                                                 {tier.title}
                                             </span>
                                             {engine.linked && !engine.missing && (
-                                                <span className="text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-sky-400/30 bg-sky-400/10 text-sky-300 flex items-center gap-1" title="Linked: used from its own folder">
-                                                    <Link2 size={9} /> Linked
+                                                <span className="text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-sky-400/30 bg-sky-400/10 text-sky-300 flex items-center gap-1" title={engine.copy ? 'Linked: Coliseum plays with a copy, so the file can be rebuilt while in use (see Configure)' : 'Linked: used from its own folder'}>
+                                                    <Link2 size={9} /> {engine.copy ? 'Linked · copy' : 'Linked'}
                                                 </span>
                                             )}
                                             {engine.missing && (
