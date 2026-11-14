@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listLinkedEngines: () => ipcRenderer.invoke('list-linked-engines'),
 
     getEngineOptions: (enginePath) => ipcRenderer.invoke('get-engine-options', enginePath),
-    saveEngineOptions: (path, options) => ipcRenderer.invoke('save-engine-options', { path, options }),
+    saveEngineOptions: (path, options, available) => ipcRenderer.invoke('save-engine-options', { path, options, available }),
 
     getAudioSettings: () => ipcRenderer.invoke('get-audio-settings'),
     saveAudioSettings: (settings) => ipcRenderer.invoke('save-audio-settings', settings),

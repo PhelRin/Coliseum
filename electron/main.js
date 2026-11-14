@@ -530,7 +530,9 @@ const createWindow = () => {
     // UCI / WinBoard: 'auto' (ask the engine), 'uci' or 'xboard'
     ipcMain.handle('set-engine-protocol', (_, { path: enginePath, mode } = {}) => engineProtocols.setMode(enginePath, mode));
 
-    ipcMain.handle('save-engine-options', async (_, { path, options }) => {
+    // `available`: the options the engine listed, so only the changed ones are kept
+    ipcMain.handle('save-engine-options', async (_, { path, options, available }) => {
+        if (Array.isArray(available)) return { success: true, saved: configManager.saveFromWindow(path, available, options) };
         configManager.updateOptions(path, options);
         return { success: true };
     });

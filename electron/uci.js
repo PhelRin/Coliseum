@@ -2,6 +2,7 @@ const { spawn } = require('child_process');
 const EventEmitter = require('events');
 const path = require('path');
 const { launchFile } = require('./linked-engines');
+const { parseOptionLine } = require('./engine-options');
 
 class UciEngine extends EventEmitter {
     // launchPath: the file to actually run, when it differs from the engine's path (a pinned
@@ -98,19 +99,9 @@ class UciEngine extends EventEmitter {
                 this.emit('ready');
                 break;
             case 'option': {
-                // option name <Name with spaces> type <Type> [default <Default>] [min <Min> max <Max>]
-                const typeIdx = parts.indexOf('type');
-                if (parts[1] === 'name' && typeIdx > 2) {
-                    const optName = parts.slice(2, typeIdx).join(' ');
-                    const opt = { name: optName, type: parts[typeIdx + 1] };
-                    const minIdx = parts.indexOf('min');
-                    const maxIdx = parts.indexOf('max');
-                    const defIdx = parts.indexOf('default');
-                    if (minIdx > -1) opt.min = Number(parts[minIdx + 1]);
-                    if (maxIdx > -1) opt.max = Number(parts[maxIdx + 1]);
-                    if (defIdx > -1) opt.default = parts[defIdx + 1];
-                    this.options.set(optName.toLowerCase(), opt);
-                }
+                // option name <Name with spaces> type <Type> [default <Default>] [min <Min> max <Max>] [var <Choice>]...
+                const opt = parseOptionLine(line);
+                if (opt) this.options.set(opt.name.toLowerCase(), opt);
                 break;
             }
             case 'bestmove':
@@ -220,7 +211,10 @@ class UciEngine extends EventEmitter {
         return this.options.has(String(name).toLowerCase());
     }
 
+    // Saved settings go through applySaved() in engine-options.js, which only passes on real,
+    // changed values. A value that isn't one is never written to the engine as text.
     setOption(name, value) {
+        if (value === undefined || value === null || (typeof value === 'number' && !Number.isFinite(value))) return;
         this.send(`setoption name ${name} value ${value}`);
     }
 
@@ -250,6 +244,7 @@ class UciEngine extends EventEmitter {
     }
 
     quit() {
+        this.quitting = true; // closed by Coliseum, not a crash
         this.send('quit');
         if (this.process) {
             if (this.process.pid) {
