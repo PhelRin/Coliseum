@@ -196,8 +196,9 @@ const createWindow = () => {
     ipcMain.handle('eas-report', (_, id) => easRunner.getReport(id));
     ipcMain.handle('eas-delete-report', (_, id) => easRunner.deleteReport(id));
 
-    // Linked engines run from a snapshot (a copy of their current build) so the original can
-    // be rebuilt while Coliseum uses it. Tournaments and Elo runs pin their own snapshot.
+    // Linked engines run where they live. One with "run a copy" switched on runs from a snapshot
+    // (a copy of its current build) so the original can be rebuilt while Coliseum uses it;
+    // tournaments and Elo runs pin their own snapshot.
     const linkedEngines = new LinkedEngines(null, path.join(app.getPath('userData'), 'linked-engines'));
     tournamentManager.linked = linkedEngines;
     tournamentManager.dataDir = app.getPath('userData');
@@ -211,6 +212,7 @@ const createWindow = () => {
         store = new Store();
         tournamentManager.store = store;
         linkedEngines.store = store;
+        linkedEngines.upgrade(); // engines linked before 4.0.4 (see linked-engines.js)
         tournamentArchive = new TournamentArchive(store, path.join(app.getPath('userData'), 'tournaments'));
         career.setStore(store);
         // fill in error bars / migrate ratings from older versions
@@ -287,7 +289,7 @@ const createWindow = () => {
         // linked engines that are still where they were linked from
         for (const e of linkedEngines.list()) {
             if (e.missing || found.some((f) => samePath(f.path, e.path))) continue;
-            found.push({ name: e.name, path: e.path, linked: true });
+            found.push({ name: e.name, path: e.path, linked: true, copy: e.copy });
         }
         return found;
     });
@@ -333,6 +335,8 @@ const createWindow = () => {
         configManager.renameEngine(from, to);
     }));
     ipcMain.handle('list-linked-engines', () => linkedEngines.list());
+    // "run a copy" for an engine that is being developed (see linked-engines.js)
+    ipcMain.handle('set-engine-copy', (_, { path: enginePath, copy } = {}) => linkedEngines.setCopy(enginePath, copy));
 
     ipcMain.handle('scan-books', () => {
         const fileList = [];
@@ -523,6 +527,11 @@ const createWindow = () => {
     ipcMain.handle('get-engine-options', async (_, enginePath) => {
         return await configManager.fetchEngineOptions(enginePath);
     });
+    // what the settings window shows besides the options (works for an engine that won't start)
+    ipcMain.handle('get-engine-info', (_, enginePath) => ({
+        linked: linkedEngines.isLinked(enginePath),
+        copy: linkedEngines.copyWanted(enginePath),
+    }));
 
     // EPD / PGN opening files: how many openings, and the first one, for the setup screens
     ipcMain.handle('inspect-openings', (_, { file, plies } = {}) => require('./opening-suite').inspect(file, { plies }));

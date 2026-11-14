@@ -1,20 +1,23 @@
 // Engines used where they live (for example an engine's own build folder) instead of
 // being copied into Coliseum's engines folder.
 //
-// Windows locks an .exe while it runs, so an engine developer could not rebuild while
-// Coliseum is playing with it. Coliseum therefore runs a snapshot: a copy of the file
-// kept under <userData>/linked-engines. Snapshots are keyed by the file's modification
-// time and size, so every rebuild gets a fresh one, and tournaments / Elo sessions pin
-// the snapshot they started with so all their games use the same build.
+// A linked engine is run from its own folder, exactly as it was installed. Many engines find
+// what they need from the location of their own file: Lc0 looks for its network next to its
+// .exe, adapters start an emulator or a WinBoard engine that sits beside them, and commercial
+// engines check their licence there. None of that works for a copy kept somewhere else.
 //
-// The engine is still identified by its original path everywhere (ratings, options,
-// career stats), and it runs with its own folder as working directory, so nets and
-// books next to it are still found.
+// For an engine that is being developed there is "run a copy" (off unless switched on in the
+// engine's settings). Windows locks an .exe while it runs, so a developer could not rebuild
+// while Coliseum is playing with it. With the switch on, Coliseum runs a snapshot: a copy of
+// the file kept under <userData>/linked-engines. Snapshots are keyed by the file's
+// modification time and size, so every rebuild gets a fresh one, and tournaments / Elo
+// sessions pin the snapshot they started with so all their games use the same build. The copy
+// still runs with the engine's own folder as working directory.
 //
-// Some engines will not run as a copy: commercial engines (Houdini, Shredder, ...) can
-// check their licence against the location of their own .exe. When the copy of an engine
-// doesn't answer but the original does, the engine is marked to run where it lives
-// (no snapshot) from then on. Relinking it, or a new build, tries the copy again.
+// The engine is identified by its original path everywhere (ratings, options, career stats).
+//
+// If the copy of an engine doesn't start but the original does, that build is run where it
+// lives. A new build, or relinking, tries the copy again.
 
 const fs = require('fs');
 const path = require('path');
@@ -46,12 +49,63 @@ class LinkedEngines {
         return !!p && this.entries().some((e) => samePath(e.path, p));
     }
 
+    entry(p) {
+        return this.entries().find((e) => samePath(e.path, p)) || null;
+    }
+
+    // "run a copy" is switched on for this engine
+    copyWanted(p) {
+        const e = this.entry(p);
+        return !!(e && e.copy === true);
+    }
+
+    setCopy(p, on) {
+        const list = this.entries();
+        const e = list.find((x) => samePath(x.path, p));
+        if (!e) return { success: false, error: 'That engine is not linked.' };
+        e.copy = !!on;
+        delete e.inPlace; // a fresh choice: try the copy again
+        this.save(list);
+        if (!on) this.dropSnapshots(p);
+        return { success: true, copy: e.copy };
+    }
+
+    // Engines linked with 4.0.3 or earlier always ran as a copy. One that was rebuilt while
+    // linked (more than one snapshot was made of it) is being developed and keeps its copy;
+    // every other engine now runs where it lives. Called once the saved list is available.
+    upgrade() {
+        const list = this.entries();
+        let changed = false;
+        for (const e of list) {
+            if (typeof e.copy === 'boolean') continue;
+            e.copy = this.snapshotVersions(e.path) > 1;
+            changed = true;
+        }
+        if (changed) this.save(list);
+        return changed;
+    }
+
+    snapshotVersions(p) {
+        try {
+            return fs.readdirSync(this.engineDir(p)).filter((v) => {
+                try {
+                    return fs.statSync(path.join(this.engineDir(p), v)).isDirectory();
+                } catch (e) {
+                    return false;
+                }
+            }).length;
+        } catch (e) {
+            return 0;
+        }
+    }
+
     // every linked engine, with a flag for files that are no longer there
     list() {
         return this.entries().map((e) => ({
             name: path.basename(e.path),
             path: e.path,
             linked: true,
+            copy: e.copy === true,
             addedAt: e.addedAt,
             missing: !isFile(e.path),
         }));
@@ -63,7 +117,7 @@ class LinkedEngines {
         if (!isEngineFile(file)) return { success: false, error: `Choose the engine itself (${ENGINE_HINT}).` };
         const list = this.entries();
         if (list.some((e) => samePath(e.path, file))) return { success: true, already: true, path: file };
-        list.push({ path: file, addedAt: Date.now() });
+        list.push({ path: file, addedAt: Date.now(), copy: false });
         this.save(list);
         return { success: true, path: file };
     }
@@ -90,10 +144,13 @@ class LinkedEngines {
         return { success: true, path: file };
     }
 
-    // engines that won't run as a copy are run where they live (see the top of this file)
+    // A linked engine runs where it lives unless "run a copy" is on, and also when the copy of
+    // its current build did not start (see the top of this file).
     runsInPlace(p) {
-        const e = this.entries().find((x) => samePath(x.path, p));
-        return !!(e && e.inPlace && e.inPlace === signature(p));
+        const e = this.entry(p);
+        if (!e) return false;
+        if (e.copy !== true) return true;
+        return !!(e.inPlace && e.inPlace === signature(p));
     }
 
     markRunInPlace(p) {
@@ -144,7 +201,7 @@ class LinkedEngines {
     pin(paths, existing = {}) {
         const pins = {};
         for (const p of new Set(paths)) {
-            if (!this.isLinked(p)) continue;
+            if (!this.isLinked(p) || this.runsInPlace(p)) continue; // no copy: nothing to pin
             const snap = this.stillThere(existing[p]) ? existing[p] : this.snapshot(p);
             if (snap) pins[p] = snap;
         }

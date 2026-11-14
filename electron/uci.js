@@ -25,7 +25,7 @@ class UciEngine extends EventEmitter {
     start() {
         try {
             const engineDir = path.dirname(this.path);
-            this.launched = this.launchPath || launchFile(this.path); // a linked engine runs as a copy
+            this.launched = this.launchPath || launchFile(this.path); // a copy, for a linked engine with "run a copy" on
             this.process = spawn(this.launched, { cwd: engineDir });
 
             this.process.stdout.on('data', (data) => {
@@ -37,6 +37,7 @@ class UciEngine extends EventEmitter {
                 for (const line of lines) {
                     if (line.trim()) {
                         this.remember(line.trim());
+                        this.report(line.trim());
                         this.parseLine(line.trim());
                     }
                 }
@@ -147,6 +148,17 @@ class UciEngine extends EventEmitter {
     }
 
     // the last few lines the engine printed, to explain a failed start
+    // An engine that can't do what it was asked often says so in a line of its own and then just
+    // waits: Lc0 prints "error <reason>" when it finds no network, and never moves. Such lines
+    // go to the match log (the first few), so a game that hangs shows why.
+    report(line) {
+        if (!/^(error\b|info string (error|fatal)\b)/i.test(line)) return;
+        if (!this.reported) this.reported = new Set();
+        if (this.reported.has(line) || this.reported.size >= 3) return; // each message once
+        this.reported.add(line);
+        this.emit('engine-error', line.length > 300 ? line.slice(0, 297) + '...' : line);
+    }
+
     remember(line) {
         if (!this.tail) this.tail = [];
         if (/^option\b/.test(line)) return; // engines list dozens; they say nothing about a failed start

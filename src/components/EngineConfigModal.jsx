@@ -7,6 +7,7 @@ export function EngineConfigModal({ engine, onClose }) {
     const [values, setValues] = useState({});
     const [loading, setLoading] = useState(true);
     const [protocol, setProtocol] = useState(null); // { protocol, mode }
+    const [link, setLink] = useState(null); // { linked, copy }: for a linked engine, whether it runs as a copy
     const [loadError, setLoadError] = useState(null);
     const [reload, setReload] = useState(0);
 
@@ -15,6 +16,19 @@ export function EngineConfigModal({ engine, onClose }) {
         await window.electronAPI.invoke('set-engine-protocol', { path: engine.path, mode });
         setReload((n) => n + 1);
     };
+
+    const changeCopy = async (copy) => {
+        if (!window.electronAPI) return;
+        await window.electronAPI.invoke('set-engine-copy', { path: engine.path, copy });
+        setLink((l) => ({ ...(l || { linked: true }), copy }));
+        setReload((n) => n + 1);
+    };
+
+    // asked on its own, so the switch is there even for an engine that doesn't start
+    useEffect(() => {
+        if (!window.electronAPI || !engine) return;
+        window.electronAPI.invoke('get-engine-info', engine.path).then((info) => setLink(info || null)).catch(() => setLink(null));
+    }, [engine]);
 
     useEffect(() => {
         if (window.electronAPI && engine) {
@@ -109,6 +123,33 @@ export function EngineConfigModal({ engine, onClose }) {
                             ))}
                         </div>
                     </div>
+                    {link && link.linked && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 bg-black/20 border border-white/5 rounded-xl p-3">
+                            <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium text-foreground">Run a copy</div>
+                                <div className="text-xs text-muted-foreground">
+                                    {link.copy
+                                        ? 'On: Coliseum plays with a copy of the file, so you can rebuild the engine while it is in use.'
+                                        : 'Off: the engine runs from its own folder. Switch on for an engine you are building, so you can rebuild it while Coliseum is using it.'}
+                                </div>
+                            </div>
+                            <div className="flex gap-1 bg-black/40 border border-white/10 rounded-xl p-1">
+                                {[[false, 'Off'], [true, 'On']].map(([k, label]) => (
+                                    <button
+                                        key={label}
+                                        type="button"
+                                        onClick={() => changeCopy(k)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${link.copy === k ? 'bg-primary text-black' : 'text-muted-foreground hover:text-foreground hover:bg-white/5'}`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {link && link.linked && link.copy && (
+                        <p className="text-xs text-muted-foreground -mt-3">Engines that look for files next to themselves (Lc0 and its network, adapters, licensed engines) may not work as a copy.</p>
+                    )}
                     {protocol && protocol.protocol === 'xboard' && !loading && (
                         <p className="text-xs text-muted-foreground -mt-3">WinBoard engines play games, tournaments and Elo runs. Analysis, Game Review and the Tactics Trainer need a UCI engine.</p>
                     )}
